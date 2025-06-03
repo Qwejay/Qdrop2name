@@ -33,3 +33,8 @@ python Qdrop2name.py
 
 - 重命名依据：拍摄日期、修改日期、创建日期、当前日期
 - 重名处理：保留原名称、增加序号后缀 
+
+## 打包代码
+```bash
+python -m nuitka --standalone --disable-console --enable-plugin=pyqt6 --include-module=PyQt6.QtWidgets --include-module=PyQt6.QtCore --include-module=PyQt6.QtGui --include-module=PIL --include-module=exif --include-module=pillow_heif --include-data-files=icon.ico=icon.ico --onefile --nofollow-import-to=tkinter --windows-icon-from-ico=icon.ico --remove-output --jobs=1 --lto=yes --include-data-files=settings.json=settings.json Qdrop2name.py
+```
