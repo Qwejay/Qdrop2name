@@ -70,16 +70,6 @@ python Qdrop2name.py
 - `IMG-{YYYY}{MM}{DD}_{HH}{mm}{SS}` → IMGS-20250415_122809.jpg
 - `Photo_{YYYY}-{MM}-{DD}` → Photo_2025-04-15.jpg
 
-## 开发说明
-
-### 环境要求
-
-- Python 3.10+
-- PyQt6
-- Pillow
-- exif
-- pillow-heif
-
 ### 构建说明
 
 使用 Nuitka 构建可执行文件：
