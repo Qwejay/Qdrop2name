@@ -13,7 +13,7 @@
 
 ## 安装
 
-1. 确保已安装Python 3.8或更高版本
+1. 确保已安装Python 3.12或更高版本
 2. 安装依赖：
 ```bash
 pip install -r requirements.txt
@@ -23,7 +23,7 @@ pip install -r requirements.txt
 
 1. 运行程序：
 ```bash
-python main.py
+python Qdrop2name.py
 ```
 2. 将文件拖放到程序窗口中
 3. 点击"开始"按钮开始重命名
