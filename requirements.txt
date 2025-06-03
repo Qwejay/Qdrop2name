@@ -1,0 +1,4 @@
+PyQt6==6.6.1
+pillow==10.2.0
+pillow-heif==0.14.0
+exif==1.6.0 
