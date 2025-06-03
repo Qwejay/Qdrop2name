@@ -15,9 +15,18 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
+      - name: Debug Info
+        run: |
+          echo "Event name: ${{ github.event_name }}"
+          echo "Ref: ${{ github.ref }}"
+          echo "Ref name: ${{ github.ref_name }}"
+          echo "Tag: ${{ github.ref_type == 'tag' }}"
+          echo "Version: ${{ github.event.inputs.version }}"
+      
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
+          ref: ${{ github.ref }}
       
       - name: Set up Python
         uses: actions/setup-python@v4
