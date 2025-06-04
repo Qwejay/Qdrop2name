@@ -741,9 +741,9 @@ Photo_{YYYY}-{MM}-{DD} → Photo_2025-04-15.jpg
                 "date_source": "拍摄日期",
                 "fallback_date_source": "修改日期",
                 "duplicate_handling": "add_suffix",
-                "name_template": "YYYYMMDD_HHMMSS_001",
-                "custom_format": "",
-                "enable_non_media": False,
+                "name_template": "{YYYY}{MM}{DD}_{HH}{mm}{SS}",
+                "custom_format": "{YYYY}{MM}{DD}_{HH}{mm}{SS}",
+                "enable_non_media": True,
                 "non_media_date_source": "创建日期"
             }
 
@@ -1641,9 +1641,9 @@ class MainWindow(QMainWindow):
                 "date_source": "拍摄日期",
                 "fallback_date_source": "修改日期",
                 "duplicate_handling": "add_suffix",
-                "name_template": "YYYYMMDD_HHMMSS_001",
-                "custom_format": "",
-                "enable_non_media": False,
+                "name_template": "{YYYY}{MM}{DD}_{HH}{mm}{SS}",
+                "custom_format": "{YYYY}{MM}{DD}_{HH}{mm}{SS}",
+                "enable_non_media": True,
                 "non_media_date_source": "创建日期"
             }
 
