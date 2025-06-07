@@ -81,7 +81,7 @@ python Qdrop2name.py
 使用 Nuitka 构建可执行文件：
 
 ```bash
-python -m nuitka --standalone --disable-console --enable-plugin=pyqt6 --include-module=PyQt6.QtWidgets --include-module=PyQt6.QtCore --include-module=PyQt6.QtGui --include-module=PIL --include-module=exif --include-module=pillow_heif --include-data-files=icon.ico=icon.ico --onefile --nofollow-import-to=tkinter --windows-icon-from-ico=icon.ico --remove-output --jobs=1 --lto=yes --include-data-files=settings.json=settings.json Qdrop2name.py
+python -m nuitka --standalone --disable-console --enable-plugin=pyqt6 --follow-imports --nofollow-import-to=tkinter --include-package=PIL --include-package=exif --include-package=pillow_heif --onefile --windows-icon-from-ico=icon.ico --include-data-dir=.=. --output-dir=build --remove-output --lto=yes --jobs=4 --assume-yes-for-downloads --windows-product-name="Qdrop2name" --windows-file-version=1.0.1 --windows-product-version=1.0.1 --windows-file-description="批量文件重命名工具" --windows-company-name="QwejayHuang" Qdrop2name.py
 ```
 
 ## 更新日志
