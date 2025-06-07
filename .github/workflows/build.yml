@@ -27,11 +27,22 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install nuitka
+          pip install --upgrade setuptools wheel
           pip install PyQt6
+          pip install PyQt6-Qt6
+          pip install PyQt6-sip
+          pip install nuitka
           pip install pillow
           pip install exif
           pip install pillow-heif
+          
+      - name: Verify PyQt6 installation
+        run: |
+          python -c "import sys; print('Python version:', sys.version)"
+          python -c "import PyQt6; print('PyQt6 version:', PyQt6.__version__)"
+          python -c "from PyQt6.QtWidgets import QApplication; print('PyQt6.QtWidgets imported successfully')"
+          python -c "from PyQt6.QtCore import Qt; print('PyQt6.QtCore imported successfully')"
+          python -c "from PyQt6.QtGui import QIcon; print('PyQt6.QtGui imported successfully')"
           
       - name: Build with Nuitka
         run: |

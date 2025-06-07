@@ -118,16 +118,29 @@ class DropArea(QFrame):
 
     def is_supported_file(self, file_path):
         """检查文件是否为支持的类型"""
-        ext = os.path.splitext(file_path)[1].lower()
-        supported_extensions = {
-            '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.heic', '.heif',
-            '.mp4', '.mov', '.avi', '.mkv', '.wmv', '.flv', '.webm', '.m4v', '.3gp'
-        }
-        # 通过主窗口访问settings
-        main_window = self.window()
-        if hasattr(main_window, 'settings') and main_window.settings.get("enable_non_media", False):
-            return True
-        return ext in supported_extensions
+        try:
+            # 检查文件是否存在或可访问
+            if not os.path.exists(file_path) or not os.access(file_path, os.R_OK):
+                return False
+            
+            ext = os.path.splitext(file_path)[1].lower()
+            image_extensions = {
+                '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.heic', '.heif', 
+                '.tiff', '.tif', '.webp', '.raw', '.arw', '.cr2', '.nef', 
+                '.dng', '.orf', '.sr2', '.rw2'
+            }
+            video_extensions = {
+                '.mp4', '.mov', '.avi', '.mkv', '.wmv', '.flv', '.webm', 
+                '.m4v', '.3gp', '.mpg', '.mpeg', '.mts', '.m2ts'
+            }
+            # 通过主窗口访问settings
+            main_window = self.window()
+            if hasattr(main_window, 'settings') and main_window.settings.get("enable_non_media", False):
+                return True
+            return ext in image_extensions or ext in video_extensions
+        except Exception as e:
+            print(f"文件检查错误: {str(e)}")
+            return False
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -733,19 +746,38 @@ Photo_{YYYY}-{MM}-{DD} → Photo_2025-04-15.jpg
         self.custom_format.setText(template)
 
     def load_settings(self):
+        default_settings = {
+            "date_source": "拍摄日期",
+            "fallback_date_source": "修改日期",
+            "duplicate_handling": "add_suffix",
+            "name_template": "{YYYY}{MM}{DD}_{HH}{mm}{SS}",
+            "custom_format": "{YYYY}{MM}{DD}_{HH}{mm}{SS}",
+            "enable_non_media": True,
+            "non_media_date_source": "创建日期"
+        }
+        
         try:
+            # 检查配置文件是否存在
+            if not os.path.exists("settings.json"):
+                # 如果不存在，创建默认配置文件
+                with open("settings.json", "w", encoding="utf-8") as f:
+                    json.dump(default_settings, f, ensure_ascii=False, indent=4)
+                return default_settings
+            
+            # 读取现有配置
             with open("settings.json", "r", encoding="utf-8") as f:
-                return json.load(f)
-        except:
-            return {
-                "date_source": "拍摄日期",
-                "fallback_date_source": "修改日期",
-                "duplicate_handling": "add_suffix",
-                "name_template": "{YYYY}{MM}{DD}_{HH}{mm}{SS}",
-                "custom_format": "{YYYY}{MM}{DD}_{HH}{mm}{SS}",
-                "enable_non_media": True,
-                "non_media_date_source": "创建日期"
-            }
+                settings = json.load(f)
+            
+            # 检查必要的键是否存在，如果不存在则使用默认值
+            for key, value in default_settings.items():
+                if key not in settings:
+                    settings[key] = value
+            
+            return settings
+        except Exception as e:
+            print(f"加载设置错误: {str(e)}")
+            # 发生任何错误，返回默认设置
+            return default_settings
 
     def save_settings(self):
         self.settings = {
@@ -828,28 +860,48 @@ class RenameWorker(QThread):
                     continue
 
                 # 处理重名文件
-                if os.path.exists(new_path):
-                    if self.settings["duplicate_handling"] == "keep_original":
+                if os.path.exists(new_path) and os.path.abspath(file_path) != os.path.abspath(new_path):
+                    if self.settings.get("duplicate_handling", "add_suffix") == "keep_original":
                         # 如果选择保留原名称，则跳过重命名
                         self.progress.emit(file_path, "跳过: 文件已存在")
                         processed_files.add(file_path)
                         continue
                     else:  # add_suffix
                         # 如果选择增加序号后缀，则查找下一个可用的序号
-                        base_name, ext = os.path.splitext(new_name)
+                        base_name_without_ext, ext = os.path.splitext(new_name)
                         count = 1
-                        while True:
-                            candidate_name = f"{base_name}_{count:03d}{ext}"
+                        max_attempts = 1000  # 防止无限循环
+                        while count < max_attempts:
+                            candidate_name = f"{base_name_without_ext}_{count:03d}{ext}"
                             candidate_path = os.path.join(dir_path, candidate_name)
-                            if not os.path.exists(candidate_path):
+                            if not os.path.exists(candidate_path) or os.path.abspath(candidate_path) == os.path.abspath(file_path):
                                 new_name = candidate_name
                                 new_path = candidate_path
                                 break
                             count += 1
+                        
+                        if count >= max_attempts:
+                            self.progress.emit(file_path, "错误: 无法找到可用的文件名")
+                            processed_files.add(file_path)
+                            continue
 
                 # 检查文件是否可写
-                if not os.access(dir_path, os.W_OK):
-                    self.progress.emit(file_path, "错误: 没有写入权限")
+                try:
+                    if not os.access(dir_path, os.W_OK):
+                        self.progress.emit(file_path, "错误: 没有写入权限")
+                        processed_files.add(file_path)
+                        continue
+                    
+                    # 临时检查文件是否被占用
+                    try:
+                        with open(file_path, "a"):
+                            pass
+                    except IOError:
+                        self.progress.emit(file_path, "错误: 文件被占用")
+                        processed_files.add(file_path)
+                        continue
+                except Exception as e:
+                    self.progress.emit(file_path, f"错误: 权限检查失败 - {str(e)}")
                     processed_files.add(file_path)
                     continue
 
@@ -878,27 +930,22 @@ class RenameWorker(QThread):
     def get_base_filename(self, date):
         """根据日期和模板生成基础文件名（不含序号）"""
         template = self.settings["name_template"]
-        if template == "YYYYMMDD_HHMMSS_001":
-            return date.strftime("%Y%m%d_%H%M%S")
-        elif template == "自定义格式":
-            custom_format = self.settings.get("custom_format", "{YYYY}{MM}{DD}_{HH}{mm}{SS}")
-            try:
-                # 替换所有可能的日期时间格式
-                format_str = custom_format
-                format_str = format_str.replace("{YYYY}", "%Y")
-                format_str = format_str.replace("{MM}", "%m")
-                format_str = format_str.replace("{DD}", "%d")
-                format_str = format_str.replace("{HH}", "%H")
-                format_str = format_str.replace("{mm}", "%M")
-                format_str = format_str.replace("{SS}", "%S")
-                
-                # 使用strftime格式化日期
-                return date.strftime(format_str)
-            except KeyError as e:
-                raise ValueError(f"自定义格式错误: 未知变量 {e}")
-            except Exception as e:
-                raise ValueError(f"自定义格式错误: {str(e)}")
-        else:
+        # 直接使用自定义格式
+        try:
+            # 替换所有可能的日期时间格式
+            format_str = template
+            format_str = format_str.replace("{YYYY}", date.strftime("%Y"))
+            format_str = format_str.replace("{MM}", date.strftime("%m"))
+            format_str = format_str.replace("{DD}", date.strftime("%d"))
+            format_str = format_str.replace("{HH}", date.strftime("%H"))
+            format_str = format_str.replace("{mm}", date.strftime("%M"))
+            format_str = format_str.replace("{SS}", date.strftime("%S"))
+            
+            # 返回替换后的结果
+            return format_str
+        except Exception as e:
+            # 出错时回退到安全格式
+            print(f"格式解析错误: {str(e)}")
             return date.strftime("%Y%m%d_%H%M%S")
 
     def get_file_date(self, file_path):
@@ -924,9 +971,23 @@ class RenameWorker(QThread):
                 with open(file_path, 'rb') as f:
                     exif_data = exif.Image(f)
                     if exif_data.has_exif:
-                        date_str = exif_data.datetime_original
-                        return datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
-            except:
+                        # 获取日期字段
+                        date_str = None
+                        # 尝试不同的日期字段
+                        for field in ['datetime_original', 'datetime']:
+                            if hasattr(exif_data, field):
+                                date_str = getattr(exif_data, field)
+                                break
+                        
+                        if date_str:
+                            # 尝试不同的日期格式
+                            for fmt in ["%Y:%m:%d %H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S"]:
+                                try:
+                                    return datetime.strptime(date_str, fmt)
+                                except ValueError:
+                                    continue
+            except Exception as e:
+                print(f"EXIF读取错误: {str(e)}")
                 pass
 
         # 如果首选日期获取失败，使用备选日期
@@ -939,86 +1000,6 @@ class RenameWorker(QThread):
             return datetime.fromtimestamp(stat.st_ctime)
         else:  # 当前日期
             return datetime.now()
-
-    def update_progress(self, old_name, new_name):
-        if "错误" not in new_name and "跳过" not in new_name and "已符合命名格式" not in new_name:
-            # 更新文件列表中的路径
-            for i in range(self.file_list.rowCount()):
-                if self.file_list.item(i, 0).text() == os.path.basename(old_name):
-                    self.file_list.item(i, 0).setText(os.path.basename(new_name))
-                    self.file_list.item(i, 1).setText("✓")
-                    self.file_list.item(i, 1).setForeground(QColor("#4CAF50"))
-                    break
-            # 状态栏显示进度
-            success_count = sum(1 for i in range(self.file_list.rowCount()) 
-                              if self.file_list.item(i, 1).text() == "✓")
-            total_count = self.file_list.rowCount()
-            self.show_message(f"正在重命名... ({success_count}/{total_count})", 0)
-            # 更新按钮文本显示进度
-            self.action_btn.setText(f"停止 ({success_count}/{total_count})")
-        else:
-            # 如果是错误、跳过或已符合格式，更新列表状态
-            for i in range(self.file_list.rowCount()):
-                if self.file_list.item(i, 0).text() == os.path.basename(old_name):
-                    if "错误" in new_name:
-                        self.file_list.item(i, 1).setText("✗")
-                        self.file_list.item(i, 1).setForeground(QColor("#F44336"))
-                    elif "已符合命名格式" in new_name:
-                        self.file_list.item(i, 1).setText("✓")
-                        self.file_list.item(i, 1).setForeground(QColor("#4CAF50"))
-                    else:
-                        self.file_list.item(i, 1).setText("○")
-                        self.file_list.item(i, 1).setForeground(QColor("#9E9E9E"))
-                    break
-
-    def rename_finished(self, success_count):
-        self.action_btn.setText("开始")
-        self.action_btn.setObjectName("actionButton")
-        self.action_btn.setStyleSheet("""
-            QPushButton {
-                background: #2196F3;
-                color: white;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 6px;
-                font-size: 14px;
-                min-width: 80px;
-                min-height: 36px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background: #1976D2;
-            }
-            QPushButton:pressed {
-                background: #1565C0;
-            }
-            QPushButton:disabled {
-                background: #BDBDBD;
-                color: #E0E0E0;
-            }
-        """)
-        # 只有在实际进行了重命名操作时才显示完成信息
-        if success_count > 0:
-            # 先清除进度消息
-            self.status_label.setText("")
-            # 然后显示完成消息
-            QTimer.singleShot(100, lambda: self.show_message(f"✓ 已重命名 {success_count} 个文件", 3000))
-            # 在拖动区域显示成功提示
-            self.drop_area.show_success(success_count)
-            self.has_renamed = True  # 标记已进行重命名操作
-        else:
-            self.show_message("没有文件被重命名", 3000)
-        self.update_list_button_text()
-
-    def show_message(self, message, duration=3000):
-        """显示状态栏消息"""
-        # 如果当前正在显示进度消息，不要覆盖它
-        if duration == 0 and "正在重命名" in self.status_label.text():
-            return
-        self.status_label.setText(message)
-        # 如果设置了持续时间，则定时恢复显示文件信息
-        if duration > 0:
-            QTimer.singleShot(duration, self.update_list_button_text)
 
 class FileTableWidget(QTableWidget):
     def __init__(self, parent=None):
@@ -1063,7 +1044,16 @@ class FileTableWidget(QTableWidget):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Qdrop2name 1.0 ———— QwejayHuang")
+        self.setWindowTitle("Qdrop2name 1.0.1 —— QwejayHuang")
+        
+        # 设置应用程序图标
+        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.ico")
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
+            print(f"已加载图标: {icon_path}")
+        else:
+            print(f"警告: 图标文件不存在 - {icon_path}")
+        
         self.setStyleSheet("""
             QMainWindow {
                 background-color: #ffffff;
@@ -1376,9 +1366,6 @@ class MainWindow(QMainWindow):
         # 状态栏
         self.statusBar = self.statusBar()
         self.status_label = QLabel("")
-        # 移除点击事件和鼠标样式
-        # self.status_label.setCursor(Qt.CursorShape.PointingHandCursor)
-        # self.status_label.mousePressEvent = self.show_file_list
         self.statusBar.addWidget(self.status_label)
 
     def toggle_file_list(self):
@@ -1549,6 +1536,9 @@ class MainWindow(QMainWindow):
     def start_rename(self):
         if not self.files:
             return
+        # 确保文件列表可见
+        if not self.list_container.isVisible():
+            self.show_file_list()
         self.worker = RenameWorker(self.files, self.settings)
         self.worker.progress.connect(self.update_progress)
         self.worker.finished.connect(self.rename_finished)
@@ -1570,6 +1560,8 @@ class MainWindow(QMainWindow):
                     self.file_list.item(i, 0).setText(os.path.basename(new_name))
                     self.file_list.item(i, 1).setText("✓")
                     self.file_list.item(i, 1).setForeground(QColor("#4CAF50"))
+                    # 滚动到当前项
+                    self.file_list.scrollToItem(self.file_list.item(i, 0))
                     break
             # 状态栏显示进度
             success_count = sum(1 for i in range(self.file_list.rowCount()) 
@@ -1591,6 +1583,8 @@ class MainWindow(QMainWindow):
                     else:
                         self.file_list.item(i, 1).setText("○")
                         self.file_list.item(i, 1).setForeground(QColor("#9E9E9E"))
+                    # 滚动到当前项
+                    self.file_list.scrollToItem(self.file_list.item(i, 0))
                     break
 
     def rename_finished(self, success_count):
@@ -1633,19 +1627,38 @@ class MainWindow(QMainWindow):
             self.update_list_button_text()
 
     def load_settings(self):
+        default_settings = {
+            "date_source": "拍摄日期",
+            "fallback_date_source": "修改日期",
+            "duplicate_handling": "add_suffix",
+            "name_template": "{YYYY}{MM}{DD}_{HH}{mm}{SS}",
+            "custom_format": "{YYYY}{MM}{DD}_{HH}{mm}{SS}",
+            "enable_non_media": True,
+            "non_media_date_source": "创建日期"
+        }
+        
         try:
+            # 检查配置文件是否存在
+            if not os.path.exists("settings.json"):
+                # 如果不存在，创建默认配置文件
+                with open("settings.json", "w", encoding="utf-8") as f:
+                    json.dump(default_settings, f, ensure_ascii=False, indent=4)
+                return default_settings
+            
+            # 读取现有配置
             with open("settings.json", "r", encoding="utf-8") as f:
-                return json.load(f)
-        except:
-            return {
-                "date_source": "拍摄日期",
-                "fallback_date_source": "修改日期",
-                "duplicate_handling": "add_suffix",
-                "name_template": "{YYYY}{MM}{DD}_{HH}{mm}{SS}",
-                "custom_format": "{YYYY}{MM}{DD}_{HH}{mm}{SS}",
-                "enable_non_media": True,
-                "non_media_date_source": "创建日期"
-            }
+                settings = json.load(f)
+            
+            # 检查必要的键是否存在，如果不存在则使用默认值
+            for key, value in default_settings.items():
+                if key not in settings:
+                    settings[key] = value
+            
+            return settings
+        except Exception as e:
+            print(f"加载设置错误: {str(e)}")
+            # 发生任何错误，返回默认设置
+            return default_settings
 
     def clear_files(self):
         self.files.clear()
@@ -1656,14 +1669,18 @@ class MainWindow(QMainWindow):
         self.has_renamed = False
 
 if __name__ == '__main__':
-    import ctypes
-    try:
-        ctypes.windll.user32.SetProcessDPIAware()  # 使用SetProcessDPIAware代替SetProcessDpiAwareness
-    except Exception:
-        pass
-
+    # 删除手动DPI设置，让Qt自行处理DPI
     from PyQt6.QtCore import Qt
     app = QApplication(sys.argv)
+    
+    # 设置应用程序图标（在任务栏和任务管理器中显示）
+    icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.ico")
+    if os.path.exists(icon_path):
+        app.setWindowIcon(QIcon(icon_path))
+        print(f"已加载图标: {icon_path}")
+    else:
+        print(f"警告: 图标文件不存在 - {icon_path}")
+    
     # 设置应用程序样式
     app.setStyle("Fusion")
     # 设置默认字体

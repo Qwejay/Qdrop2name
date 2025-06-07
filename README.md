@@ -1,9 +1,6 @@
 # Qdrop2name
 
-一个简单易用的文件批量重命名工具，支持拖放操作，可以根据文件的拍摄日期、修改日期等信息进行重命名。
-
-![image](https://github.com/user-attachments/assets/4b86ffdc-ca69-46b3-ac18-478f72580034)
-
+Qdrop2name是一个用于批量重命名图片和视频文件的工具，它可以根据文件的EXIF信息、创建日期或修改日期重命名文件，使文件命名更加规范和有序。
 
 ## 功能特点
 
@@ -15,8 +12,8 @@
   - 当前日期
   
 - 🖼️ 支持多种文件格式：
-  - 图片：JPG、JPEG、PNG、GIF、BMP、HEIC、HEIF
-  - 视频：MP4、MOV、AVI、MKV、WMV、FLV、WEBM、M4V、3GP
+  - 图片：JPG、JPEG、PNG、GIF、BMP、HEIC、HEIF、TIFF、TIF、WebP、RAW格式等
+  - 视频：MP4、MOV、AVI、MKV、WMV、FLV、WEBM、M4V、3GP、MPG、MPEG等
 - 📝 自定义命名模板
 - 🔄 智能重名处理
 - 🎨 现代化界面设计
@@ -82,6 +79,30 @@ python Qdrop2name.py
 python -m nuitka --standalone --disable-console --enable-plugin=pyqt6 --include-module=PyQt6.QtWidgets --include-module=PyQt6.QtCore --include-module=PyQt6.QtGui --include-module=PIL --include-module=exif --include-module=pillow_heif --include-data-files=icon.ico=icon.ico --onefile --nofollow-import-to=tkinter --windows-icon-from-ico=icon.ico --remove-output --jobs=1 --lto=yes --include-data-files=settings.json=settings.json Qdrop2name.py
 ```
 
+## 更新日志
+
+## 1.0.1 (2025-06-07)
+
+### 功能改进
+- 添加程序图标，在标题栏和任务栏中显示
+- 文件列表自动滚动显示当前正在处理的项目
+- 开始重命名操作时自动展开文件列表
+
+### 问题修复
+- 修复DPI感知问题，避免高分辨率屏幕上显示模糊
+- 改进EXIF日期解析，增加对多种日期格式和字段的支持
+
+
+## 1.0.0 (2025-06-02)
+
+- 基础功能：支持根据EXIF日期重命名图片和视频文件
+- 支持拖放功能，可直接拖放文件或文件夹
+- 自定义命名格式
+- 可设置日期来源（拍摄日期、修改日期、创建日期、当前日期）
+- 支持对非媒体文件进行重命名
+- 重名文件处理机制
+- 现代化UI界面 
+
 ## 许可证
 
 本项目采用 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
@@ -93,12 +114,3 @@ python -m nuitka --standalone --disable-console --enable-plugin=pyqt6 --include-
 ## 贡献
 
 欢迎提交 Issue 和 Pull Request！
-
-## 更新日志
-
-### v1.0.0
-- 初始版本发布
-- 支持基本的文件重命名功能
-- 支持自定义命名模板
-- 支持多种日期来源
-- 支持拖放操作
