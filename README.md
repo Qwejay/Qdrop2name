@@ -2,6 +2,11 @@
 
 Qdrop2name是一个用于批量重命名图片和视频文件的工具，它可以根据文件的EXIF信息、创建日期或修改日期重命名文件，使文件命名更加规范和有序。
 
+![main](https://github.com/user-attachments/assets/ed32dbc2-f55a-47f0-8f2c-22baf84dd610) ![setting](https://github.com/user-attachments/assets/e4b573bf-78a9-4c6a-aeec-9f8e5b1134e9) ![others](https://github.com/user-attachments/assets/80913db6-6901-46f8-aa87-4cbc38bdf17e)
+
+
+
+
 ## 功能特点
 
 - 🖱️ 非常简单易用
