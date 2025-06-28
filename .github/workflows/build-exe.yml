@@ -1,0 +1,41 @@
+name: Build EXE and Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Ensure targets directory exists
+        run: mkdir targets
+
+      - name: Build EXE with PyInstaller
+        shell: bash
+        run: |
+          pip install pyinstaller
+          pyinstaller --noconfirm --onefile --windowed --icon=icon.ico --add-data "targets;targets" main.py
+          mv dist/main.exe dist/Qdrop2name-${{ github.ref_name }}.exe
+
+      - name: Upload EXE to Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/Qdrop2name-${{ github.ref_name }}.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
