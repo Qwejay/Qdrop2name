@@ -1044,7 +1044,7 @@ class FileTableWidget(QTableWidget):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Qdrop2name 1.0.1 —— QwejayHuang")
+        self.setWindowTitle("Qdrop2name 1.0.4 —— QwejayHuang")
         
         # 设置应用程序图标
         icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.ico")
