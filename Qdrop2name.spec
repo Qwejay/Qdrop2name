@@ -2,45 +2,20 @@
 
 import os
 import sys
-from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules, get_module_file_attribute
+from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules
 
 # 收集所有必要的模块和数据
 datas = []
 binaries = []
 hiddenimports = []
 
-# 收集PyQt6相关文件 - 只收集必要的模块
+# 收集PyQt6相关文件
 pyqt6_datas, pyqt6_binaries, pyqt6_hiddenimports = collect_all('PyQt6')
 datas.extend(pyqt6_datas)
 binaries.extend(pyqt6_binaries)
 hiddenimports.extend(pyqt6_hiddenimports)
 
-# 手动添加PyQt6的核心DLL文件 - 只添加必要的
-try:
-    import PyQt6
-    pyqt6_path = os.path.dirname(get_module_file_attribute('PyQt6'))
-    qt6_path = os.path.join(pyqt6_path, 'Qt6')
-    if os.path.exists(qt6_path):
-        # 只添加核心DLL，排除不必要的模块
-        core_dlls = [
-            'Qt6Core.dll',
-            'Qt6Gui.dll', 
-            'Qt6Widgets.dll',
-            'Qt6Network.dll',
-            'Qt6Svg.dll',
-            'Qt6SvgWidgets.dll'
-        ]
-        for root, dirs, files in os.walk(qt6_path):
-            for file in files:
-                if file.endswith('.dll') and file in core_dlls:
-                    full_path = os.path.join(root, file)
-                    rel_path = os.path.relpath(full_path, qt6_path)
-                    target_path = os.path.join('PyQt6', 'Qt6', rel_path)
-                    binaries.append((full_path, os.path.dirname(target_path)))
-except Exception as e:
-    print(f"Warning: Could not collect PyQt6 DLLs: {e}")
-
-# 收集PIL相关文件 - 只收集必要的
+# 收集PIL相关文件
 pil_datas, pil_binaries, pil_hiddenimports = collect_all('PIL')
 datas.extend(pil_datas)
 binaries.extend(pil_binaries)
@@ -53,7 +28,7 @@ for module in ['pillow_heif', 'exif']:
     binaries.extend(module_binaries)
     hiddenimports.extend(module_hiddenimports)
 
-# 只添加程序实际使用的隐藏导入
+# 添加必要的隐藏导入
 hiddenimports.extend([
     'pkgutil',
     'pkg_resources',
