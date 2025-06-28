@@ -53,7 +53,7 @@ datas.extend([
     ('targets', 'targets'),
 ])
 
-# 排除不必要的模块以减小体积
+# 排除不必要的模块以减小体积 - 移除可能导致运行时错误的模块
 excludes = [
     'tkinter',
     'matplotlib',
@@ -76,7 +76,6 @@ excludes = [
     'xmlrpc',
     'email',
     'http',
-    'urllib',
     'ftplib',
     'telnetlib',
     'smtplib',
