@@ -30,18 +30,10 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Install UPX for compression
-        run: |
-          # 下载并安装UPX压缩工具
-          curl -L -o upx.zip https://github.com/upx/upx/releases/download/v4.2.1/upx-4.2.1-win64.zip
-          Expand-Archive -Path upx.zip -DestinationPath upx
-          echo "$PWD/upx/upx-4.2.1-win64/upx.exe" >> $env:GITHUB_PATH
-
-      - name: Ensure targets directory exists
+      - name: Create targets directory
         run: mkdir targets
 
-      - name: Build EXE with PyInstaller
-        shell: bash
+      - name: Build EXE
         run: |
           pyinstaller --noconfirm Qdrop2name.spec
           mv dist/Qdrop2name.exe dist/Qdrop2name-${{ github.ref_name }}.exe
@@ -51,7 +43,7 @@ jobs:
           echo "Final EXE size:"
           ls -lh dist/Qdrop2name-${{ github.ref_name }}.exe
 
-      - name: Upload EXE to Release
+      - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: dist/Qdrop2name-${{ github.ref_name }}.exe
