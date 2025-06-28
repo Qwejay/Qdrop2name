@@ -38,11 +38,6 @@ jobs:
           pyinstaller --noconfirm Qdrop2name.spec
           mv dist/Qdrop2name.exe dist/Qdrop2name-${{ github.ref_name }}.exe
 
-      - name: Show file size
-        run: |
-          echo "Final EXE size:"
-          ls -lh dist/Qdrop2name-${{ github.ref_name }}.exe
-
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
