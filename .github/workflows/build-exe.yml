@@ -1,41 +1,59 @@
-name: Build EXE and Release
+name: Build and Release
 
 on:
   push:
     tags:
-      - 'v*.*.*'
-
-permissions:
-  contents: write
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: windows-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
+      - name: Debug Info
+        run: |
+          echo "Event name: ${{ github.event_name }}"
+          echo "Ref: ${{ github.ref }}"
+          echo "Ref name: ${{ github.ref_name }}"
+          echo "Tag: ${{ github.ref_type == 'tag' }}"
+      
+      - uses: actions/checkout@v3
+      
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
-
+          
       - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Ensure targets directory exists
-        run: mkdir targets
-
-      - name: Build EXE with PyInstaller
-        shell: bash
         run: |
-          pip install pyinstaller
-          pyinstaller --noconfirm Qdrop2name.spec
-          mv dist/Qdrop2name.exe dist/Qdrop2name-${{ github.ref_name }}.exe
-
-      - name: Upload EXE to Release
+          python -m pip install --upgrade pip
+          pip install --upgrade setuptools wheel
+          pip install PyQt6
+          pip install PyQt6-Qt6
+          pip install PyQt6-sip
+          pip install nuitka
+          pip install pillow
+          pip install exif
+          pip install pillow-heif
+          
+      - name: Verify PyQt6 installation
+        run: |
+          python -c "import sys; print('Python version:', sys.version)"
+          python -c "import PyQt6; print('PyQt6 version:', PyQt6.__version__)"
+          python -c "from PyQt6.QtWidgets import QApplication; print('PyQt6.QtWidgets imported successfully')"
+          python -c "from PyQt6.QtCore import Qt; print('PyQt6.QtCore imported successfully')"
+          python -c "from PyQt6.QtGui import QIcon; print('PyQt6.QtGui imported successfully')"
+          
+      - name: Build with Nuitka
+        run: |
+          python -m nuitka --standalone --disable-console --enable-plugin=pyqt6 --include-module=PyQt6.QtWidgets --include-module=PyQt6.QtCore --include-module=PyQt6.QtGui --include-module=PIL --include-module=exif --include-module=pillow_heif --include-data-files=icon.ico=icon.ico --onefile --nofollow-import-to=tkinter --windows-icon-from-ico=icon.ico --remove-output --jobs=1 --lto=yes --include-data-files=settings.json=settings.json Qdrop2name.py
+          
+      - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: dist/Qdrop2name-${{ github.ref_name }}.exe
+          files: |
+            Qdrop2name.dist/Qdrop2name.exe
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
