@@ -25,6 +25,22 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
+          pip install PyQt6-Qt6
+          pip install PyQt6-sip
+
+      - name: Install UPX for compression
+        run: |
+          # 下载并安装UPX压缩工具
+          curl -L -o upx.zip https://github.com/upx/upx/releases/download/v4.2.1/upx-4.2.1-win64.zip
+          Expand-Archive -Path upx.zip -DestinationPath upx
+          echo "$PWD/upx/upx-4.2.1-win64/upx.exe" >> $env:GITHUB_PATH
+
+      - name: Verify PyQt6 installation
+        run: |
+          python -c "import PyQt6; print('PyQt6 version:', PyQt6.__version__)"
+          python -c "from PyQt6.QtCore import Qt; print('PyQt6.QtCore imported successfully')"
+          python -c "from PyQt6.QtWidgets import QApplication; print('PyQt6.QtWidgets imported successfully')"
+          python -c "from PyQt6.QtGui import QIcon; print('PyQt6.QtGui imported successfully')"
 
       - name: Ensure targets directory exists
         run: mkdir targets
@@ -34,6 +50,11 @@ jobs:
         run: |
           pyinstaller --noconfirm Qdrop2name.spec
           mv dist/Qdrop2name.exe dist/Qdrop2name-${{ github.ref_name }}.exe
+
+      - name: Show file size
+        run: |
+          echo "Final EXE size:"
+          ls -lh dist/Qdrop2name-${{ github.ref_name }}.exe
 
       - name: Upload EXE to Release
         uses: softprops/action-gh-release@v1
