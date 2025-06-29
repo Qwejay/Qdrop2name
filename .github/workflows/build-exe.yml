@@ -30,17 +30,6 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Debug PyQt6 installation
-        run: |
-          echo "Python version:"
-          python --version
-          echo "PyQt6 installation:"
-          pip show PyQt6
-          echo "PyQt6-Qt6 installation:"
-          pip show PyQt6-Qt6
-          echo "PyQt6-sip installation:"
-          pip show PyQt6-sip
-
       - name: Create targets directory
         run: mkdir targets
 
