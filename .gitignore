@@ -1,0 +1,29 @@
+# Build folders
+build/
+*.dist/
+*.build/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+downloads/
+eggs/
+.eggs/
+*.egg-info/
+*.egg
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+venv/
+env/
+.venv/ 
