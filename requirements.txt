@@ -1,4 +1,6 @@
-PyQt6==6.6.1
-pillow==10.2.0
-pillow-heif==0.14.0
-exif==1.6.0 
+PyQt5==5.15.9
+PyQt5-Qt5==5.15.2
+PyQt5-sip==12.13.0
+Pillow>=9.0.0
+exif>=1.0.0
+pillow-heif>=0.10.0
