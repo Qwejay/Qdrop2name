@@ -2,14 +2,15 @@ import sys
 import os
 import json
 from datetime import datetime
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QPushButton, QVBoxLayout,
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QPushButton, QVBoxLayout,
                             QWidget, QLabel, QListWidget, QDialog, QComboBox,
                             QRadioButton, QButtonGroup, QHBoxLayout, QFrame, QStackedLayout,
                             QFileDialog, QLineEdit, QScrollArea, QSizePolicy, QGroupBox, QMessageBox, QStatusBar,
                             QProgressBar, QTableWidget, QTableWidgetItem, QHeaderView, QMenu, QInputDialog,
-                            QGraphicsOpacityEffect, QCheckBox, QToolTip)
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize, QPropertyAnimation, QEasingCurve, QTimer, QParallelAnimationGroup
-from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QFont, QPalette, QColor, QIcon, QAction
+                            QGraphicsOpacityEffect, QCheckBox, QToolTip, QAction)
+
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QSize, QPropertyAnimation, QEasingCurve, QTimer, QParallelAnimationGroup
+from PyQt5.QtGui import QDragEnterEvent, QDropEvent, QFont, QPalette, QColor, QIcon
 import exif
 from PIL import Image
 from pillow_heif import register_heif_opener
@@ -20,8 +21,8 @@ class DropArea(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAcceptDrops(True)
-        self.setFrameStyle(QFrame.Shape.NoFrame)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFrameStyle(QFrame.NoFrame)  
+        self.setCursor(Qt.PointingHandCursor) 
         self.setStyleSheet("""
             QFrame {
                 background-color: #f5f5f5;
@@ -42,7 +43,7 @@ class DropArea(QFrame):
         
         # 添加图标和提示文本
         self.label = QLabel("拖放文件或文件夹到这里\n或点击选择文件")
-        self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.label.setAlignment(Qt.AlignCenter)  
         self.label.setStyleSheet("""
             QLabel {
                 color: #666666;
@@ -143,19 +144,20 @@ class DropArea(QFrame):
             return False
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
+        if event.button() == Qt.LeftButton:  
             self.open_file_dialog()
 
     def open_file_dialog(self):
         dialog = QFileDialog()
         dialog.setWindowTitle("选择文件")
-        dialog.setFileMode(QFileDialog.FileMode.ExistingFiles)
+        dialog.setFileMode(QFileDialog.ExistingFiles)
         
-        # 设置按钮文本
-        dialog.setLabelText(QFileDialog.DialogLabel.Accept, "选择")
-        dialog.setLabelText(QFileDialog.DialogLabel.Reject, "取消")
-        dialog.setLabelText(QFileDialog.DialogLabel.FileName, "文件名：")
-        dialog.setLabelText(QFileDialog.DialogLabel.FileType, "文件类型：")
+        # PyQt5 不支持 setLabelText(QFileDialog.DialogLabel.Accept)，改用 setOkButtonText（非标准）
+        # 替代方案：直接忽略，或使用自定义对话框
+        # dialog.setLabelText(QFileDialog.DialogLabel.Accept, "选择") ← 删除这行
+        # dialog.setLabelText(QFileDialog.DialogLabel.Reject, "取消")
+        # dialog.setLabelText(QFileDialog.DialogLabel.FileName, "文件名：")
+        # dialog.setLabelText(QFileDialog.DialogLabel.FileType, "文件类型：")
         
         # 设置文件过滤器
         dialog.setNameFilter(
@@ -171,7 +173,7 @@ class DropArea(QFrame):
             "所有文件 (*.*)"
         )
         
-        if dialog.exec():
+        if dialog.exec_():  # ← PyQt5 使用 exec_()
             files = []
             for path in dialog.selectedFiles():
                 if os.path.isfile(path):
@@ -228,12 +230,12 @@ class AnimatedButton(QPushButton):
         # 创建位置动画
         self.position_animation = QPropertyAnimation(self, b"geometry")
         self.position_animation.setDuration(150)
-        self.position_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.position_animation.setEasingCurve(QEasingCurve.OutCubic)  # ← PyQt5
         
         # 创建透明度动画
         self.opacity_animation = QPropertyAnimation(self.opacity_effect, b"opacity")
         self.opacity_animation.setDuration(200)
-        self.opacity_animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        self.opacity_animation.setEasingCurve(QEasingCurve.InOutCubic)  # ← PyQt5
         
         # 将动画添加到动画组
         self.animation_group.addAnimation(self.position_animation)
@@ -1005,10 +1007,10 @@ class FileTableWidget(QTableWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent = parent
-        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.setContextMenuPolicy(Qt.CustomContextMenu)  # ← PyQt5
         self.customContextMenuRequested.connect(self.show_context_menu)
         # 禁用双击编辑
-        self.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.setEditTriggers(QTableWidget.NoEditTriggers)  # ← PyQt5
 
     def show_context_menu(self, pos):
         menu = QMenu(self)
@@ -1028,7 +1030,7 @@ class FileTableWidget(QTableWidget):
         clear_action.triggered.connect(self.clear_all)
         menu.addAction(clear_action)
         
-        menu.exec(self.mapToGlobal(pos))
+        menu.exec_(self.mapToGlobal(pos))  # ← PyQt5: exec_
 
     def remove_file(self, row):
         if isinstance(self.parent, MainWindow):
@@ -1044,7 +1046,7 @@ class FileTableWidget(QTableWidget):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Qdrop2name 1.0.9 —— QwejayHuang")
+        self.setWindowTitle("Qdrop2name 1.1 —— QwejayHuang")
         
         # 设置应用程序图标
         icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.ico")
@@ -1172,17 +1174,17 @@ class MainWindow(QMainWindow):
         # 为开始按钮设置动画
         self.start_animation = QPropertyAnimation(self.action_btn, b"geometry")
         self.start_animation.setDuration(150)
-        self.start_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.start_animation.setEasingCurve(QEasingCurve.OutCubic)  # ← PyQt5
 
         # 为设置按钮设置动画
         self.settings_animation = QPropertyAnimation(self.settings_btn, b"geometry")
         self.settings_animation.setDuration(150)
-        self.settings_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.settings_animation.setEasingCurve(QEasingCurve.OutCubic)  # ← PyQt5
 
         # 为展开按钮设置动画
         self.toggle_animation = QPropertyAnimation(self.toggle_list_btn, b"geometry")
         self.toggle_animation.setDuration(150)
-        self.toggle_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.toggle_animation.setEasingCurve(QEasingCurve.OutCubic)  # ← PyQt5
 
     def enterEvent(self, event):
         # 鼠标进入按钮区域时触发动画
@@ -1246,20 +1248,20 @@ class MainWindow(QMainWindow):
         self.file_list = FileTableWidget(self)
         self.file_list.setColumnCount(2)
         self.file_list.setHorizontalHeaderLabels(["文件名", "状态"])
-        self.file_list.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.file_list.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        self.file_list.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)  # ← PyQt5
+        self.file_list.horizontalHeader().setSectionResizeMode(1, QHeaderView.Fixed)    # ← PyQt5
         self.file_list.setColumnWidth(1, 60)
         self.file_list.setMinimumHeight(200)
         self.file_list.setVisible(False)
         self.file_list.setShowGrid(False)
-        self.file_list.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.file_list.setSelectionBehavior(QTableWidget.SelectRows)  # ← PyQt5
         self.file_list.verticalHeader().setVisible(False)
         # 设置标题对齐方式
-        self.file_list.horizontalHeaderItem(0).setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        self.file_list.horizontalHeaderItem(1).setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.file_list.horizontalHeaderItem(0).setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)  # ← PyQt5
+        self.file_list.horizontalHeaderItem(1).setTextAlignment(Qt.AlignCenter)  # ← PyQt5
         # 添加平滑滚动
-        self.file_list.setVerticalScrollMode(QTableWidget.ScrollMode.ScrollPerPixel)
-        self.file_list.setHorizontalScrollMode(QTableWidget.ScrollMode.ScrollPerPixel)
+        self.file_list.setVerticalScrollMode(QTableWidget.ScrollPerPixel)  # ← PyQt5
+        self.file_list.setHorizontalScrollMode(QTableWidget.ScrollPerPixel)  # ← PyQt5
         list_layout.addWidget(self.file_list)
         
         list_container.hide()
@@ -1430,7 +1432,7 @@ class MainWindow(QMainWindow):
                 self.file_list.insertRow(row)
                 self.file_list.setItem(row, 0, QTableWidgetItem(os.path.basename(file_path)))
                 self.file_list.setItem(row, 1, QTableWidgetItem("●"))
-                self.file_list.item(row, 1).setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.file_list.item(row, 1).setTextAlignment(Qt.AlignCenter)  # ← PyQt5
 
         # 如果列表可见，则自动滚动到底部
         if self.file_list.isVisible():
@@ -1442,7 +1444,7 @@ class MainWindow(QMainWindow):
         # 创建动画
         self.animation = QPropertyAnimation(self.stacked_layout.currentWidget(), b"geometry")
         self.animation.setDuration(250)
-        self.animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.animation.setEasingCurve(QEasingCurve.OutCubic)  # ← PyQt5
         
         # 设置动画起始和结束位置
         start_geometry = self.stacked_layout.currentWidget().geometry()
@@ -1462,7 +1464,7 @@ class MainWindow(QMainWindow):
         # 创建动画
         self.animation = QPropertyAnimation(self.stacked_layout.currentWidget(), b"geometry")
         self.animation.setDuration(250)
-        self.animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.animation.setEasingCurve(QEasingCurve.OutCubic)  # ← PyQt5
         
         # 设置动画起始和结束位置
         start_geometry = self.stacked_layout.currentWidget().geometry()
@@ -1670,7 +1672,6 @@ class MainWindow(QMainWindow):
 
 if __name__ == '__main__':
     # 删除手动DPI设置，让Qt自行处理DPI
-    from PyQt6.QtCore import Qt
     app = QApplication(sys.argv)
     
     # 设置应用程序图标（在任务栏和任务管理器中显示）
@@ -1688,4 +1689,4 @@ if __name__ == '__main__':
     app.setFont(font)
     window = MainWindow()
     window.show()
-    sys.exit(app.exec()) 
+    sys.exit(app.exec_()) 
