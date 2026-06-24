@@ -110,7 +110,7 @@ python -m nuitka --standalone --disable-console --enable-plugin=pyqt6 --follow-i
 
 ## 许可证
 
-本项目采用 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
+本项目采用 GPL-3.0 license 许可证。详见 [LICENSE](LICENSE) 文件。
 
 ## 作者
 
@@ -119,3 +119,13 @@ python -m nuitka --standalone --disable-console --enable-plugin=pyqt6 --follow-i
 ## 贡献
 
 欢迎提交 Issue 和 Pull Request！
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=Qwejay%2FQdrop2name&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Qwejay/Qdrop2name&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Qwejay/Qdrop2name&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Qwejay/Qdrop2name&type=date&legend=top-left" />
+ </picture>
+</a>
