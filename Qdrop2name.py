@@ -15,6 +15,13 @@ import exif
 from PIL import Image
 from pillow_heif import register_heif_opener
 
+__app_name__ = "Qdrop2name"
+__version__ = "1.1"
+__author__ = "QwejayHuang"
+__company__ = "QwejayHuang"
+__description__ = "文件智能重命名工具"
+
+
 register_heif_opener()
 
 class DropArea(QFrame):
@@ -151,13 +158,6 @@ class DropArea(QFrame):
         dialog = QFileDialog()
         dialog.setWindowTitle("选择文件")
         dialog.setFileMode(QFileDialog.ExistingFiles)
-        
-        # PyQt5 不支持 setLabelText(QFileDialog.DialogLabel.Accept)，改用 setOkButtonText（非标准）
-        # 替代方案：直接忽略，或使用自定义对话框
-        # dialog.setLabelText(QFileDialog.DialogLabel.Accept, "选择") ← 删除这行
-        # dialog.setLabelText(QFileDialog.DialogLabel.Reject, "取消")
-        # dialog.setLabelText(QFileDialog.DialogLabel.FileName, "文件名：")
-        # dialog.setLabelText(QFileDialog.DialogLabel.FileType, "文件类型：")
         
         # 设置文件过滤器
         dialog.setNameFilter(
@@ -863,7 +863,7 @@ class RenameWorker(QThread):
 
                 # 处理重名文件
                 if os.path.exists(new_path) and os.path.abspath(file_path) != os.path.abspath(new_path):
-                    if self.settings.get("duplicate_handling", "add_suffix") == "keep_original":
+                    if self.settings.get("duplicate_handling", "keep_original") == "keep_original":
                         # 如果选择保留原名称，则跳过重命名
                         self.progress.emit(file_path, "跳过: 文件已存在")
                         processed_files.add(file_path)
@@ -1046,7 +1046,7 @@ class FileTableWidget(QTableWidget):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Qdrop2name 1.1 —— QwejayHuang")
+        self.setWindowTitle(f"{__app_name__} {__version__} —— {__author__}")
         
         # 设置应用程序图标
         icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.ico")
@@ -1689,4 +1689,4 @@ if __name__ == '__main__':
     app.setFont(font)
     window = MainWindow()
     window.show()
-    sys.exit(app.exec_()) 
+    sys.exit(app.exec_())

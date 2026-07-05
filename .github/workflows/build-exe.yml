@@ -8,10 +8,18 @@ on:
       - 'v*.*.*'
       - 'v*.*.*.*'
   workflow_dispatch:
+    inputs:
+      version:
+        description: '手动构建版本号 (例如: 1.1.0)'
+        required: true
+        default: '1.1.0'
 
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: write
+
     steps:
       - name: Debug Info
         run: |
@@ -20,10 +28,13 @@ jobs:
           echo "Ref name: ${{ github.ref_name }}"
           echo "Tag: ${{ github.ref_type == 'tag' }}"
       
-      - uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
           
@@ -31,32 +42,130 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install --upgrade setuptools wheel
-          pip install PyQt6
-          pip install PyQt6-Qt6
-          pip install PyQt6-sip
+          pip install PyQt5
           pip install nuitka
           pip install pillow
           pip install exif
           pip install pillow-heif
-          
-      - name: Verify PyQt6 installation
+
+      - name: Verify PyQt5 installation
         run: |
           python -c "import sys; print('Python version:', sys.version)"
-          python -c "import PyQt6; print('PyQt6 version:', PyQt6.__version__)"
-          python -c "from PyQt6.QtWidgets import QApplication; print('PyQt6.QtWidgets imported successfully')"
-          python -c "from PyQt6.QtCore import Qt; print('PyQt6.QtCore imported successfully')"
-          python -c "from PyQt6.QtGui import QIcon; print('PyQt6.QtGui imported successfully')"
+          python -c "import PyQt5; print('PyQt5 version:', PyQt5.__version__)"
           
+      - name: Resolve Version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            ORIGINAL_VER="${{ github.ref_name }}"
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            ORIGINAL_VER="${{ github.event.inputs.version }}"
+          else
+            ORIGINAL_VER="1.1.0-dev"
+          fi
+          
+          CLEAN_VER=$(echo "$ORIGINAL_VER" | sed -E 's/^[vV]//g')
+          
+          METADATA_VER=$(echo "$CLEAN_VER" | cut -d'-' -f1)
+          if [[ ! "$METADATA_VER" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
+            METADATA_VER="1.1.0"
+          fi
+          
+          echo "clean_version=$CLEAN_VER" >> $GITHUB_OUTPUT
+          echo "metadata_version=$METADATA_VER" >> $GITHUB_OUTPUT
+
+      - name: Sync Version to Code
+        shell: python
+        run: |
+          import re
+          import os
+
+          version = "${{ steps.version.outputs.clean_version }}"
+          print(f"Target version to sync: {version}")
+
+          filename = "Qdrop2name.py"
+          if os.path.exists(filename):
+              with open(filename, 'r', encoding='utf-8') as f:
+                  content = f.read()
+              
+              # 匹配并替换 __version__ = "x.y.z"
+              new_content = re.sub(
+                  r'(__version__\s*=\s*["\'])[^"\']+(["\'])',
+                  f'\\g<1>{version}\\g<2>',
+                  content,
+                  count=1
+              )
+              with open(filename, 'w', encoding='utf-8') as f:
+                  f.write(new_content)
+              print(f"Successfully synchronized version in {filename}.")
+
       - name: Build with Nuitka
         run: |
-          python -m nuitka --standalone --windows-console-mode=disable --enable-plugin=pyqt6 --include-module=PyQt6.QtWidgets --include-module=PyQt6.QtCore --include-module=PyQt6.QtGui --include-module=PIL --include-module=exif --include-module=pillow_heif --include-data-files=icon.ico=icon.ico --onefile --nofollow-import-to=tkinter --windows-icon-from-ico=icon.ico --remove-output --jobs=1 --lto=yes --include-data-files=settings.json=settings.json --assume-yes-for-downloads Qdrop2name.py
+          $version = "${{ steps.version.outputs.clean_version }}"
+          $metadataVersion = "${{ steps.version.outputs.metadata_version }}"
           
+          $nuitkaParams = @(
+            "-m", "nuitka",
+            "--standalone",
+            "--onefile",
+            "--windows-console-mode=disable",
+            "--enable-plugin=pyqt5",
+            "--include-module=PyQt5.QtWidgets",
+            "--include-module=PyQt5.QtCore",
+            "--include-module=PyQt5.QtGui",
+            "--include-module=PIL",
+            "--include-module=exif",
+            "--include-module=pillow_heif",
+            "--nofollow-import-to=tkinter",
+            "--remove-output",
+            "--jobs=1",
+            "--lto=yes",
+            "--assume-yes-for-downloads",
+            "--product-name=Qdrop2name",
+            "--product-version=$metadataVersion",
+            "--file-description=智能媒体文件重命名工具",
+            "--copyright=QwejayHuang",
+            "--output-dir=dist"
+          )
+          
+          if (Test-Path "icon.ico") {
+            $nuitkaParams += "--windows-icon-from-ico=icon.ico"
+            $nuitkaParams += "--include-data-files=icon.ico=icon.ico"
+          }
+          if (Test-Path "settings.json") {
+            $nuitkaParams += "--include-data-files=settings.json=settings.json"
+          }
+          
+          $nuitkaParams += "Qdrop2name.py"
+          
+          python @nuitkaParams
+          
+          if (Test-Path "dist/Qdrop2name.exe") {
+            Rename-Item -Path "dist/Qdrop2name.exe" -NewName "Qdrop2name_$version.exe"
+            Write-Host "成功生成：dist/Qdrop2name_$version.exe"
+            
+            # 将生成的 exe 压缩为 zip
+            Compress-Archive -Path "dist/Qdrop2name_$version.exe" -DestinationPath "dist/Qdrop2name_$version.zip"
+            Write-Host "成功生成：dist/Qdrop2name_$version.zip"
+          } else {
+            Write-Error "编译失败：未能在 dist 目录下找到 Qdrop2name.exe 文件"
+            exit 1
+          }
+        shell: pwsh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Qdrop2name_build
+          path: dist/Qdrop2name_*.zip
+
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
-            Qdrop2name.dist/Qdrop2name.exe
+            dist/Qdrop2name_*.zip
           draft: false
           prerelease: false
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
