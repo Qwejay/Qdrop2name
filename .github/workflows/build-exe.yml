@@ -4,9 +4,6 @@ on:
   push:
     tags:
       - 'v*'
-      - 'v*.*'
-      - 'v*.*.*'
-      - 'v*.*.*.*'
   workflow_dispatch:
     inputs:
       version:
@@ -21,13 +18,6 @@ jobs:
       contents: write
 
     steps:
-      - name: Debug Info
-        run: |
-          echo "Event name: ${{ github.event_name }}"
-          echo "Ref: ${{ github.ref }}"
-          echo "Ref name: ${{ github.ref_name }}"
-          echo "Tag: ${{ github.ref_type == 'tag' }}"
-      
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -37,22 +27,14 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+          cache: 'pip'
           
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install --upgrade setuptools wheel
-          pip install PyQt5
-          pip install nuitka
-          pip install pillow
-          pip install exif
-          pip install pillow-heif
+          pip install PyQt5 nuitka pillow exif pillow-heif
 
-      - name: Verify PyQt5 installation
-        run: |
-          python -c "import sys; print('Python version:', sys.version)"
-          python -c "import PyQt5; print('PyQt5 version:', PyQt5.__version__)"
-          
       - name: Resolve Version
         id: version
         shell: bash
@@ -62,48 +44,58 @@ jobs:
           elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             ORIGINAL_VER="${{ github.event.inputs.version }}"
           else
-            ORIGINAL_VER="1.1.0-dev"
+            ORIGINAL_VER="1.1.0"
           fi
           
           CLEAN_VER=$(echo "$ORIGINAL_VER" | sed -E 's/^[vV]//g')
-          
           METADATA_VER=$(echo "$CLEAN_VER" | cut -d'-' -f1)
+          
+          # 确保 metadata 版本号符合 Windows 版本号标准 (X.Y.Z)
           if [[ ! "$METADATA_VER" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
             METADATA_VER="1.1.0"
           fi
           
           echo "clean_version=$CLEAN_VER" >> $GITHUB_OUTPUT
           echo "metadata_version=$METADATA_VER" >> $GITHUB_OUTPUT
+          echo "tag_name=v$CLEAN_VER" >> $GITHUB_OUTPUT
 
-      - name: Sync Version to Code
+      - name: Determine Entry File & Sync Version
+        id: entry
         shell: python
         run: |
           import re
           import os
 
-          version = "${{ steps.version.outputs.clean_version }}"
-          print(f"Target version to sync: {version}")
+          # 自动判定入口文件（兼容 Qdrop2name.py 或 main.py）
+          entry_file = "Qdrop2name.py" if os.path.exists("Qdrop2name.py") else "main.py"
+          if not os.path.exists(entry_file):
+              raise FileNotFoundError("未找到入口文件 (Qdrop2name.py 或 main.py)")
 
-          filename = "Qdrop2name.py"
-          if os.path.exists(filename):
-              with open(filename, 'r', encoding='utf-8') as f:
-                  content = f.read()
+          version = "${{ steps.version.outputs.clean_version }}"
+          with open(entry_file, 'r', encoding='utf-8') as f:
+              content = f.read()
+
+          # 匹配并替换 __version__
+          new_content = re.sub(
+              r'(__version__\s*=\s*["\'])[^"\']+(["\'])',
+              f'\\g<1>{version}\\g<2>',
+              content,
+              count=1
+          )
+          with open(entry_file, 'w', encoding='utf-8') as f:
+              f.write(new_content)
+
+          # 将最终入口文件名导出到环境
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as gh_out:
+              gh_out.write(f"entry_file={entry_file}\n")
               
-              # 匹配并替换 __version__ = "x.y.z"
-              new_content = re.sub(
-                  r'(__version__\s*=\s*["\'])[^"\']+(["\'])',
-                  f'\\g<1>{version}\\g<2>',
-                  content,
-                  count=1
-              )
-              with open(filename, 'w', encoding='utf-8') as f:
-                  f.write(new_content)
-              print(f"Successfully synchronized version in {filename}.")
+          print(f"使用入口文件: {entry_file}，同步版本号为: {version}")
 
       - name: Build with Nuitka
         run: |
           $version = "${{ steps.version.outputs.clean_version }}"
           $metadataVersion = "${{ steps.version.outputs.metadata_version }}"
+          $entryFile = "${{ steps.entry.outputs.entry_file }}"
           
           $nuitkaParams = @(
             "-m", "nuitka",
@@ -111,16 +103,15 @@ jobs:
             "--onefile",
             "--windows-console-mode=disable",
             "--enable-plugin=pyqt5",
-            "--include-module=PyQt5.QtWidgets",
-            "--include-module=PyQt5.QtCore",
-            "--include-module=PyQt5.QtGui",
-            "--include-module=PIL",
-            "--include-module=exif",
-            "--include-module=pillow_heif",
+            "--include-package=PyQt5.QtWidgets",
+            "--include-package=PyQt5.QtCore",
+            "--include-package=PyQt5.QtGui",
+            "--include-package=PIL",
+            "--include-package=exif",
+            "--include-package=pillow_heif",
             "--nofollow-import-to=tkinter",
             "--remove-output",
-            "--jobs=1",
-            "--lto=yes",
+            "--lto=no",
             "--assume-yes-for-downloads",
             "--product-name=Qdrop2name",
             "--product-version=$metadataVersion",
@@ -133,28 +124,28 @@ jobs:
             $nuitkaParams += "--windows-icon-from-ico=icon.ico"
             $nuitkaParams += "--include-data-files=icon.ico=icon.ico"
           }
-          if (Test-Path "settings.json") {
-            $nuitkaParams += "--include-data-files=settings.json=settings.json"
-          }
           
-          $nuitkaParams += "Qdrop2name.py"
+          $nuitkaParams += $entryFile
           
           python @nuitkaParams
           
-          if (Test-Path "dist/Qdrop2name.exe") {
-            Rename-Item -Path "dist/Qdrop2name.exe" -NewName "Qdrop2name_$version.exe"
-            Write-Host "成功生成：dist/Qdrop2name_$version.exe"
-            
-            # 将生成的 exe 压缩为 zip
-            Compress-Archive -Path "dist/Qdrop2name_$version.exe" -DestinationPath "dist/Qdrop2name_$version.zip"
-            Write-Host "成功生成：dist/Qdrop2name_$version.zip"
+          # 获取生成的目标 exe 原始名称
+          $rawExeName = [System.IO.Path]::GetFileNameWithoutExtension($entryFile) + ".exe"
+          $generatedExe = "dist/$rawExeName"
+          $finalExe = "dist/Qdrop2name_$version.exe"
+          $finalZip = "dist/Qdrop2name_$version.zip"
+          
+          if (Test-Path $generatedExe) {
+            Rename-Item -Path $generatedExe -NewName "Qdrop2name_$version.exe"
+            Compress-Archive -Path $finalExe -DestinationPath $finalZip
+            Write-Host "成功生成构建文件：$finalZip"
           } else {
-            Write-Error "编译失败：未能在 dist 目录下找到 Qdrop2name.exe 文件"
+            Write-Error "编译失败：未在 dist 目录下找到 $rawExeName"
             exit 1
           }
         shell: pwsh
 
-      - name: Upload artifact
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Qdrop2name_build
@@ -163,6 +154,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.tag_name }}
           files: |
             dist/Qdrop2name_*.zip
           draft: false
