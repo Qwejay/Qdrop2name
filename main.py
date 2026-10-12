@@ -16,13 +16,41 @@ from PIL import Image
 from pillow_heif import register_heif_opener
 
 __app_name__ = "Qdrop2name"
-__version__ = "1.1"
+__version__ = "2.0"
 __author__ = "QwejayHuang"
 __company__ = "QwejayHuang"
 __description__ = "文件智能重命名工具"
 
-
 register_heif_opener()
+
+
+def get_resource_path(relative_path):
+    """获取程序资源绝对路径，兼容 PyInstaller 打包环境"""
+    base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_path, relative_path)
+
+
+def get_config_file_path():
+    """获取配置文件的安全存储路径，保障打包与受限目录下的写权限"""
+    local_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "settings.json")
+    try:
+        if os.path.exists(local_path):
+            if os.access(local_path, os.W_OK):
+                return local_path
+        else:
+            with open(local_path, "a", encoding="utf-8"):
+                pass
+            return local_path
+    except (IOError, OSError, PermissionError):
+        pass
+    
+    app_dir = os.path.join(os.path.expanduser("~"), f".{__app_name__}")
+    try:
+        os.makedirs(app_dir, exist_ok=True)
+        return os.path.join(app_dir, "settings.json")
+    except Exception:
+        return local_path
+
 
 class DropArea(QFrame):
     def __init__(self, parent=None):
@@ -48,7 +76,6 @@ class DropArea(QFrame):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         
-        # 添加图标和提示文本
         self.label = QLabel("拖放文件或文件夹到这里\n或点击选择文件")
         self.label.setAlignment(Qt.AlignCenter)  
         self.label.setStyleSheet("""
@@ -103,19 +130,18 @@ class DropArea(QFrame):
         for url in event.mimeData().urls():
             path = url.toLocalFile()
             if os.path.isfile(path):
-                files.append(path)
+                if self.is_supported_file(path):
+                    files.append(path)
             elif os.path.isdir(path):
                 files.extend(self.get_files_from_dir(path))
         if files:
             main_window = self.window()
             if isinstance(main_window, MainWindow):
                 main_window.add_files(files)
-                # 更新显示的文件数量
                 total_files = len(main_window.files)
                 self.label.setText(f"已选择 {total_files} 个文件")
 
     def get_files_from_dir(self, dir_path):
-        """递归获取文件夹中的所有支持的文件"""
         files = []
         for root, _, filenames in os.walk(dir_path):
             for filename in filenames:
@@ -125,9 +151,7 @@ class DropArea(QFrame):
         return files
 
     def is_supported_file(self, file_path):
-        """检查文件是否为支持的类型"""
         try:
-            # 检查文件是否存在或可访问
             if not os.path.exists(file_path) or not os.access(file_path, os.R_OK):
                 return False
             
@@ -141,13 +165,11 @@ class DropArea(QFrame):
                 '.mp4', '.mov', '.avi', '.mkv', '.wmv', '.flv', '.webm', 
                 '.m4v', '.3gp', '.mpg', '.mpeg', '.mts', '.m2ts'
             }
-            # 通过主窗口访问settings
             main_window = self.window()
             if hasattr(main_window, 'settings') and main_window.settings.get("enable_non_media", False):
                 return True
             return ext in image_extensions or ext in video_extensions
-        except Exception as e:
-            print(f"文件检查错误: {str(e)}")
+        except Exception:
             return False
 
     def mousePressEvent(self, event):
@@ -158,8 +180,6 @@ class DropArea(QFrame):
         dialog = QFileDialog()
         dialog.setWindowTitle("选择文件")
         dialog.setFileMode(QFileDialog.ExistingFiles)
-        
-        # 设置文件过滤器
         dialog.setNameFilter(
             "所有支持的文件 (*.jpg *.jpeg *.png *.gif *.bmp *.heic *.heif *.mp4 *.mov *.avi *.mkv *.wmv *.flv *.webm *.m4v *.3gp);;"
             "图片文件 (*.jpg *.jpeg *.png *.gif *.bmp *.heic *.heif);;"
@@ -173,11 +193,12 @@ class DropArea(QFrame):
             "所有文件 (*.*)"
         )
         
-        if dialog.exec_():  # ← PyQt5 使用 exec_()
+        if dialog.exec_():
             files = []
             for path in dialog.selectedFiles():
                 if os.path.isfile(path):
-                    files.append(path)
+                    if self.is_supported_file(path):
+                        files.append(path)
                 elif os.path.isdir(path):
                     files.extend(self.get_files_from_dir(path))
             
@@ -185,12 +206,10 @@ class DropArea(QFrame):
                 main_window = self.window()
                 if isinstance(main_window, MainWindow):
                     main_window.add_files(files)
-                    # 更新显示的文件数量
                     total_files = len(main_window.files)
                     self.label.setText(f"已选择 {total_files} 个文件")
 
     def show_success(self, count):
-        """显示成功提示"""
         self.label.setText(f"✓ 已重命名 {count} 个文件")
         self.label.setStyleSheet("""
             QLabel {
@@ -201,11 +220,9 @@ class DropArea(QFrame):
                 padding: 20px;
             }
         """)
-        # 3秒后恢复原始文本
         QTimer.singleShot(3000, self.reset_label)
 
     def reset_label(self):
-        """恢复原始文本"""
         self.label.setText("拖放文件或文件夹到这里\n或点击选择文件")
         self.label.setStyleSheet("""
             QLabel {
@@ -217,6 +234,7 @@ class DropArea(QFrame):
             }
         """)
 
+
 class AnimatedButton(QPushButton):
     def __init__(self, text, parent=None):
         super().__init__(text, parent)
@@ -224,62 +242,46 @@ class AnimatedButton(QPushButton):
         self.setGraphicsEffect(self.opacity_effect)
         self.opacity_effect.setOpacity(1.0)
         
-        # 创建动画组
         self.animation_group = QParallelAnimationGroup()
         
-        # 创建位置动画
         self.position_animation = QPropertyAnimation(self, b"geometry")
         self.position_animation.setDuration(150)
-        self.position_animation.setEasingCurve(QEasingCurve.OutCubic)  # ← PyQt5
+        self.position_animation.setEasingCurve(QEasingCurve.OutCubic)
         
-        # 创建透明度动画
         self.opacity_animation = QPropertyAnimation(self.opacity_effect, b"opacity")
         self.opacity_animation.setDuration(200)
-        self.opacity_animation.setEasingCurve(QEasingCurve.InOutCubic)  # ← PyQt5
+        self.opacity_animation.setEasingCurve(QEasingCurve.InOutCubic)
         
-        # 将动画添加到动画组
         self.animation_group.addAnimation(self.position_animation)
         self.animation_group.addAnimation(self.opacity_animation)
-        
-        # 设置初始状态
         self.is_hovered = False
 
     def enterEvent(self, event):
         if not self.is_hovered:
             self.is_hovered = True
-            # 设置位置动画
             current_geometry = self.geometry()
             self.position_animation.setStartValue(current_geometry)
             self.position_animation.setEndValue(current_geometry.adjusted(0, -2, 0, -2))
-            
-            # 设置透明度动画
             self.opacity_animation.setStartValue(1.0)
             self.opacity_animation.setEndValue(0.8)
-            
-            # 启动动画组
             self.animation_group.start()
 
     def leaveEvent(self, event):
         if self.is_hovered:
             self.is_hovered = False
-            # 设置位置动画
             current_geometry = self.geometry()
             self.position_animation.setStartValue(current_geometry)
             self.position_animation.setEndValue(current_geometry.adjusted(0, 2, 0, 2))
-            
-            # 设置透明度动画
             self.opacity_animation.setStartValue(0.8)
             self.opacity_animation.setEndValue(1.0)
-            
-            # 启动动画组
             self.animation_group.start()
 
-# 新建设置面板
+
 class SettingsPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent = parent
-        self.settings = self.load_settings()  # 初始化settings属性
+        self.settings = self.load_settings()
         self.setStyleSheet("""
             QWidget {
                 background-color: white;
@@ -395,23 +397,20 @@ class SettingsPanel(QWidget):
 
     def init_ui(self):
         layout = QVBoxLayout()
-        layout.setSpacing(24)  # 增加组之间的间距
+        layout.setSpacing(24)
         layout.setContentsMargins(30, 30, 30, 30)
 
-        # 命名模板组
         template_group = QGroupBox("命名模板")
         template_layout = QVBoxLayout()
-        template_layout.setSpacing(16)  # 增加元素之间的间距
-        template_layout.setContentsMargins(16, 20, 16, 16)  # 调整内边距
+        template_layout.setSpacing(16)
+        template_layout.setContentsMargins(16, 20, 16, 16)
         
-        # 模板输入区域
         template_input_layout = QHBoxLayout()
-        template_input_layout.setSpacing(12)  # 调整水平间距
+        template_input_layout.setSpacing(12)
         
-        # 自定义格式输入
         self.custom_format_label = QLabel("命名模板")
         self.custom_format_label.setStyleSheet("color: #666666; font-size: 13px;")
-        self.custom_format_label.setFixedWidth(80)  # 固定标签宽度
+        self.custom_format_label.setFixedWidth(80)
         template_input_layout.addWidget(self.custom_format_label)
         
         self.custom_format = QLineEdit()
@@ -435,7 +434,6 @@ class SettingsPanel(QWidget):
         """)
         template_input_layout.addWidget(self.custom_format)
         
-        # 添加帮助按钮
         help_btn = QPushButton("💡")
         help_btn.setFixedSize(32, 32)
         help_text = """
@@ -490,7 +488,6 @@ Photo_{YYYY}-{MM}-{DD} → Photo_2025-04-15.jpg
             }
         """)
         
-        # 添加点击事件处理
         def show_help():
             QToolTip.showText(help_btn.mapToGlobal(help_btn.rect().bottomRight()), help_text, help_btn)
         
@@ -502,18 +499,16 @@ Photo_{YYYY}-{MM}-{DD} → Photo_2025-04-15.jpg
         template_group.setLayout(template_layout)
         layout.addWidget(template_group)
 
-        # 日期来源组
         source_group = QGroupBox("日期来源")
         source_layout = QVBoxLayout()
-        source_layout.setSpacing(16)  # 增加元素之间的间距
-        source_layout.setContentsMargins(16, 20, 16, 16)  # 调整内边距
+        source_layout.setSpacing(16)
+        source_layout.setContentsMargins(16, 20, 16, 16)
         
-        # 首选日期来源
         primary_layout = QHBoxLayout()
-        primary_layout.setSpacing(12)  # 调整水平间距
+        primary_layout.setSpacing(12)
         primary_label = QLabel("首选日期来源")
         primary_label.setStyleSheet("color: #666666; font-size: 13px;")
-        primary_label.setFixedWidth(100)  # 固定标签宽度
+        primary_label.setFixedWidth(100)
         primary_layout.addWidget(primary_label)
         
         self.date_source = QComboBox()
@@ -539,12 +534,11 @@ Photo_{YYYY}-{MM}-{DD} → Photo_2025-04-15.jpg
         primary_layout.addStretch()
         source_layout.addLayout(primary_layout)
         
-        # 备选日期来源
         fallback_layout = QHBoxLayout()
-        fallback_layout.setSpacing(12)  # 调整水平间距
+        fallback_layout.setSpacing(12)
         fallback_label = QLabel("备选日期来源")
         fallback_label.setStyleSheet("color: #666666; font-size: 13px;")
-        fallback_label.setFixedWidth(100)  # 固定标签宽度
+        fallback_label.setFixedWidth(100)
         fallback_layout.addWidget(fallback_label)
         
         self.fallback_date_source = QComboBox()
@@ -570,11 +564,10 @@ Photo_{YYYY}-{MM}-{DD} → Photo_2025-04-15.jpg
         fallback_layout.addStretch()
         source_layout.addLayout(fallback_layout)
 
-        # 非媒体文件选项
         non_media_layout = QHBoxLayout()
-        non_media_layout.setSpacing(12)  # 调整水平间距
+        non_media_layout.setSpacing(12)
         self.enable_non_media = QCheckBox("非媒体文件日期来源")
-        self.enable_non_media.setChecked(self.settings.get("enable_non_media", False))
+        self.enable_non_media.setChecked(self.settings.get("enable_non_media", True))
         self.enable_non_media.setStyleSheet("""
             QCheckBox {
                 color: #666666;
@@ -629,16 +622,15 @@ Photo_{YYYY}-{MM}-{DD} → Photo_2025-04-15.jpg
         source_group.setLayout(source_layout)
         layout.addWidget(source_group)
 
-        # 重名处理组
         handling_group = QGroupBox("重名处理")
         handling_layout = QHBoxLayout()
         handling_layout.setSpacing(20)
-        handling_layout.setContentsMargins(16, 20, 16, 16)  # 调整内边距
+        handling_layout.setContentsMargins(16, 20, 16, 16)
         
         self.duplicate_handling = QButtonGroup(self)
-        keep_original = QRadioButton("保留原名称")
-        add_suffix = QRadioButton("增加序号后缀")
-        keep_original.setStyleSheet("""
+        self.keep_original_radio = QRadioButton("保留原名称")
+        self.add_suffix_radio = QRadioButton("增加序号后缀")
+        radio_style = """
             QRadioButton {
                 color: #666666;
                 font-size: 13px;
@@ -657,41 +649,24 @@ Photo_{YYYY}-{MM}-{DD} → Photo_2025-04-15.jpg
                 background-color: #2196F3;
                 border-color: #2196F3;
             }
-        """)
-        add_suffix.setStyleSheet("""
-            QRadioButton {
-                color: #666666;
-                font-size: 13px;
-                padding: 4px 0;
-            }
-            QRadioButton::indicator {
-                width: 18px;
-                height: 18px;
-                border: 1px solid #e0e0e0;
-                border-radius: 9px;
-            }
-            QRadioButton::indicator:hover {
-                border-color: #999999;
-            }
-            QRadioButton::indicator:checked {
-                background-color: #2196F3;
-                border-color: #2196F3;
-            }
-        """)
-        self.duplicate_handling.addButton(keep_original)
-        self.duplicate_handling.addButton(add_suffix)
+        """
+        self.keep_original_radio.setStyleSheet(radio_style)
+        self.add_suffix_radio.setStyleSheet(radio_style)
+        self.duplicate_handling.addButton(self.keep_original_radio)
+        self.duplicate_handling.addButton(self.add_suffix_radio)
+        
         if self.settings.get("duplicate_handling", "add_suffix") == "keep_original":
-            keep_original.setChecked(True)
+            self.keep_original_radio.setChecked(True)
         else:
-            add_suffix.setChecked(True)
-        handling_layout.addWidget(keep_original)
-        handling_layout.addWidget(add_suffix)
+            self.add_suffix_radio.setChecked(True)
+            
+        handling_layout.addWidget(self.keep_original_radio)
+        handling_layout.addWidget(self.add_suffix_radio)
         handling_layout.addStretch()
         
         handling_group.setLayout(handling_layout)
         layout.addWidget(handling_group)
 
-        # 按钮区域
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(12)
         btn_layout.addStretch()
@@ -743,8 +718,7 @@ Photo_{YYYY}-{MM}-{DD} → Photo_2025-04-15.jpg
         layout.addLayout(btn_layout)
         self.setLayout(layout)
         
-        # 设置初始模板
-        template = self.settings.get("name_template", "YYYYMMDD_HHMMSS_001")
+        template = self.settings.get("name_template", "{YYYY}{MM}{DD}_{HH}{mm}{SS}")
         self.custom_format.setText(template)
 
     def load_settings(self):
@@ -758,44 +732,40 @@ Photo_{YYYY}-{MM}-{DD} → Photo_2025-04-15.jpg
             "non_media_date_source": "创建日期"
         }
         
+        config_path = get_config_file_path()
         try:
-            # 检查配置文件是否存在
-            if not os.path.exists("settings.json"):
-                # 如果不存在，创建默认配置文件
-                with open("settings.json", "w", encoding="utf-8") as f:
+            if not os.path.exists(config_path):
+                with open(config_path, "w", encoding="utf-8") as f:
                     json.dump(default_settings, f, ensure_ascii=False, indent=4)
                 return default_settings
             
-            # 读取现有配置
-            with open("settings.json", "r", encoding="utf-8") as f:
+            with open(config_path, "r", encoding="utf-8") as f:
                 settings = json.load(f)
             
-            # 检查必要的键是否存在，如果不存在则使用默认值
             for key, value in default_settings.items():
                 if key not in settings:
                     settings[key] = value
-            
             return settings
-        except Exception as e:
-            print(f"加载设置错误: {str(e)}")
-            # 发生任何错误，返回默认设置
+        except Exception:
             return default_settings
 
     def save_settings(self):
+        dup_handle = "keep_original" if self.keep_original_radio.isChecked() else "add_suffix"
         self.settings = {
             "date_source": self.date_source.currentText(),
             "fallback_date_source": self.fallback_date_source.currentText(),
-            "name_template": self.custom_format.text(),
-            "custom_format": self.custom_format.text(),
+            "name_template": self.custom_format.text() or "{YYYY}{MM}{DD}_{HH}{mm}{SS}",
+            "custom_format": self.custom_format.text() or "{YYYY}{MM}{DD}_{HH}{mm}{SS}",
             "enable_non_media": self.enable_non_media.isChecked(),
-            "non_media_date_source": self.non_media_date_source.currentText()
+            "non_media_date_source": self.non_media_date_source.currentText(),
+            "duplicate_handling": dup_handle
         }
         try:
-            with open("settings.json", "w", encoding="utf-8") as f:
+            config_path = get_config_file_path()
+            with open(config_path, "w", encoding="utf-8") as f:
                 json.dump(self.settings, f, ensure_ascii=False, indent=4)
-                # 更新主窗口的设置
-                if isinstance(self.parent, MainWindow):
-                    self.parent.settings = self.settings
+            if isinstance(self.parent, MainWindow):
+                self.parent.settings = self.settings
             self.return_to_main()
         except Exception as e:
             QMessageBox.warning(self, "错误", f"保存设置失败: {str(e)}")
@@ -804,8 +774,10 @@ Photo_{YYYY}-{MM}-{DD} → Photo_2025-04-15.jpg
         if isinstance(self.parent, MainWindow):
             self.parent.stacked_layout.setCurrentWidget(self.parent.main_panel)
 
+
 class RenameWorker(QThread):
-    progress = pyqtSignal(str, str)
+    # progress 发送：(索引, 原完整路径, 新完整路径, 状态信息, 是否成功)
+    progress = pyqtSignal(int, str, str, str, bool)
     finished = pyqtSignal(int)
 
     def __init__(self, files, settings):
@@ -813,128 +785,108 @@ class RenameWorker(QThread):
         self.files = files.copy()
         self.settings = settings
         self.success_count = 0
+        self._is_running = True
+
+    def stop(self):
+        self._is_running = False
 
     def run(self):
-        # 用于跟踪每个时间戳对应的文件数量
-        timestamp_counter = {}
         processed_files = set()
+        occupied_paths = {os.path.normcase(os.path.abspath(f)) for f in self.files if os.path.exists(f)}
         
-        for file_path in self.files:
+        for idx, file_path in enumerate(self.files):
+            if not self._is_running:
+                break
+
             try:
-                if file_path in processed_files:
+                if file_path in processed_files or not os.path.exists(file_path):
                     continue
-                    
-                # 获取日期信息
-                if self.settings["date_source"] == "当前日期":
+
+                if self.settings.get("date_source") == "当前日期":
                     date = datetime.now()
                 else:
                     date = self.get_file_date(file_path)
-                
-                # 生成基础文件名（不含序号）
+
                 base_name = self.get_base_filename(date)
-                ext = os.path.splitext(file_path)[1].lower()
-                
-                # 获取当前时间戳对应的计数
-                timestamp = date.strftime("%Y%m%d_%H%M%S")
-                if timestamp not in timestamp_counter:
-                    timestamp_counter[timestamp] = 0
-                timestamp_counter[timestamp] += 1
-                
-                # 生成新文件名
+                ext = os.path.splitext(file_path)[1]
                 new_name = f"{base_name}{ext}"
                 
                 dir_path = os.path.dirname(file_path)
                 new_path = os.path.join(dir_path, new_name)
 
-                # 获取当前文件名（不含路径）
-                current_name = os.path.basename(file_path)
-                
-                # 检查文件名是否已经是预期格式
-                if current_name == new_name:
-                    self.progress.emit(file_path, "已符合命名格式")
+                # 原名已匹配
+                if os.path.basename(file_path) == new_name:
+                    self.progress.emit(idx, file_path, file_path, "已符合命名格式", False)
                     processed_files.add(file_path)
                     continue
 
-                # 跳过目标文件名和源文件名完全一致的情况
-                if os.path.abspath(file_path) == os.path.abspath(new_path):
-                    self.progress.emit(file_path, "跳过: 文件名未变化")
-                    processed_files.add(file_path)
-                    continue
+                norm_src = os.path.normcase(os.path.abspath(file_path))
+                norm_dst = os.path.normcase(os.path.abspath(new_path))
+                is_same_file_diff_case = (norm_src == norm_dst)
 
-                # 处理重名文件
-                if os.path.exists(new_path) and os.path.abspath(file_path) != os.path.abspath(new_path):
-                    if self.settings.get("duplicate_handling", "keep_original") == "keep_original":
-                        # 如果选择保留原名称，则跳过重命名
-                        self.progress.emit(file_path, "跳过: 文件已存在")
+                # 冲突检测：目标文件已存在或属于本次重命名批次中其他文件
+                conflict = (os.path.exists(new_path) or norm_dst in occupied_paths) and not is_same_file_diff_case
+                if conflict:
+                    if self.settings.get("duplicate_handling", "add_suffix") == "keep_original":
+                        self.progress.emit(idx, file_path, file_path, "跳过: 文件已存在", False)
                         processed_files.add(file_path)
                         continue
-                    else:  # add_suffix
-                        # 如果选择增加序号后缀，则查找下一个可用的序号
-                        base_name_without_ext, ext = os.path.splitext(new_name)
+                    else:
                         count = 1
-                        max_attempts = 1000  # 防止无限循环
-                        while count < max_attempts:
-                            candidate_name = f"{base_name_without_ext}_{count:03d}{ext}"
+                        found_unique = False
+                        while count < 10000:
+                            candidate_name = f"{base_name}_{count:03d}{ext}"
                             candidate_path = os.path.join(dir_path, candidate_name)
-                            if not os.path.exists(candidate_path) or os.path.abspath(candidate_path) == os.path.abspath(file_path):
+                            cand_norm = os.path.normcase(os.path.abspath(candidate_path))
+                            if not os.path.exists(candidate_path) and cand_norm not in occupied_paths:
                                 new_name = candidate_name
                                 new_path = candidate_path
+                                norm_dst = cand_norm
+                                found_unique = True
                                 break
                             count += 1
                         
-                        if count >= max_attempts:
-                            self.progress.emit(file_path, "错误: 无法找到可用的文件名")
+                        if not found_unique:
+                            self.progress.emit(idx, file_path, file_path, "错误: 无法找到可用的文件名", False)
                             processed_files.add(file_path)
                             continue
 
-                # 检查文件是否可写
-                try:
-                    if not os.access(dir_path, os.W_OK):
-                        self.progress.emit(file_path, "错误: 没有写入权限")
-                        processed_files.add(file_path)
-                        continue
-                    
-                    # 临时检查文件是否被占用
-                    try:
-                        with open(file_path, "a"):
-                            pass
-                    except IOError:
-                        self.progress.emit(file_path, "错误: 文件被占用")
-                        processed_files.add(file_path)
-                        continue
-                except Exception as e:
-                    self.progress.emit(file_path, f"错误: 权限检查失败 - {str(e)}")
-                    processed_files.add(file_path)
-                    continue
-
                 # 执行重命名
                 try:
-                    os.rename(file_path, new_path)
-                    self.progress.emit(file_path, new_path)
+                    if is_same_file_diff_case and os.name == 'nt':
+                        temp_path = os.path.join(dir_path, f"__tmp_{datetime.now().timestamp()}_{ext}")
+                        os.rename(file_path, temp_path)
+                        os.rename(temp_path, new_path)
+                    else:
+                        if os.path.exists(new_path) and not is_same_file_diff_case:
+                            self.progress.emit(idx, file_path, file_path, "跳过: 目标文件已存在", False)
+                            processed_files.add(file_path)
+                            continue
+                        os.rename(file_path, new_path)
+
+                    occupied_paths.discard(norm_src)
+                    occupied_paths.add(norm_dst)
+                    
                     self.success_count += 1
                     processed_files.add(file_path)
-                    # 更新文件列表中的路径
-                    for i, f in enumerate(self.files):
-                        if f == file_path:
-                            self.files[i] = new_path
-                            break
+                    self.progress.emit(idx, file_path, new_path, new_name, True)
+
                 except PermissionError:
-                    self.progress.emit(file_path, "错误: 没有足够的权限")
+                    self.progress.emit(idx, file_path, file_path, "错误: 文件被占用或无权限", False)
                     processed_files.add(file_path)
                 except OSError as e:
-                    self.progress.emit(file_path, f"错误: {str(e)}")
+                    self.progress.emit(idx, file_path, file_path, f"错误: {str(e)}", False)
                     processed_files.add(file_path)
+
             except Exception as e:
-                self.progress.emit(file_path, f"错误: {str(e)}")
+                self.progress.emit(idx, file_path, file_path, f"错误: {str(e)}", False)
                 processed_files.add(file_path)
+
         self.finished.emit(self.success_count)
 
     def get_base_filename(self, date):
-        """根据日期和模板生成基础文件名（不含序号）"""
-        template = self.settings["name_template"]
-        # 直接使用自定义格式
+        template = self.settings.get("name_template", "{YYYY}{MM}{DD}_{HH}{mm}{SS}")
         try:
-            # 替换所有可能的日期时间格式
             format_str = template
             format_str = format_str.replace("{YYYY}", date.strftime("%Y"))
             format_str = format_str.replace("{MM}", date.strftime("%m"))
@@ -942,119 +894,93 @@ class RenameWorker(QThread):
             format_str = format_str.replace("{HH}", date.strftime("%H"))
             format_str = format_str.replace("{mm}", date.strftime("%M"))
             format_str = format_str.replace("{SS}", date.strftime("%S"))
-            
-            # 返回替换后的结果
             return format_str
-        except Exception as e:
-            # 出错时回退到安全格式
-            print(f"格式解析错误: {str(e)}")
+        except Exception:
             return date.strftime("%Y%m%d_%H%M%S")
 
     def get_file_date(self, file_path):
-        # 检查是否为非媒体文件
         ext = os.path.splitext(file_path)[1].lower()
-        is_media_file = ext in {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.heic', '.heif',
-                              '.mp4', '.mov', '.avi', '.mkv', '.wmv', '.flv', '.webm', '.m4v', '.3gp'}
+        image_extensions = {
+            '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.heic', '.heif', 
+            '.tiff', '.tif', '.webp', '.raw', '.arw', '.cr2', '.nef', 
+            '.dng', '.orf', '.sr2', '.rw2'
+        }
         
-        # 如果是非媒体文件且启用了非媒体文件支持
-        if not is_media_file and self.settings.get("enable_non_media", False):
-            stat = os.stat(file_path)
-            date_source = self.settings.get("non_media_date_source", "创建日期")
-            if date_source == "创建日期":
-                return datetime.fromtimestamp(stat.st_ctime)
-            elif date_source == "修改日期":
-                return datetime.fromtimestamp(stat.st_mtime)
-            else:  # 当前日期
-                return datetime.now()
-
-        # 尝试获取首选日期
-        if self.settings["date_source"] == "拍摄日期":
+        # 仅对支持的静态图片提取 EXIF
+        if ext in image_extensions and self.settings.get("date_source") == "拍摄日期":
             try:
                 with open(file_path, 'rb') as f:
                     exif_data = exif.Image(f)
                     if exif_data.has_exif:
-                        # 获取日期字段
                         date_str = None
-                        # 尝试不同的日期字段
                         for field in ['datetime_original', 'datetime']:
                             if hasattr(exif_data, field):
                                 date_str = getattr(exif_data, field)
                                 break
-                        
                         if date_str:
-                            # 尝试不同的日期格式
                             for fmt in ["%Y:%m:%d %H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S"]:
                                 try:
-                                    return datetime.strptime(date_str, fmt)
+                                    return datetime.strptime(str(date_str), fmt)
                                 except ValueError:
                                     continue
-            except Exception as e:
-                print(f"EXIF读取错误: {str(e)}")
+            except Exception:
                 pass
 
-        # 如果首选日期获取失败，使用备选日期
-        stat = os.stat(file_path)
-        fallback_source = self.settings["fallback_date_source"]
-        
-        if fallback_source == "修改日期":
-            return datetime.fromtimestamp(stat.st_mtime)
-        elif fallback_source == "创建日期":
-            return datetime.fromtimestamp(stat.st_ctime)
-        else:  # 当前日期
-            return datetime.now()
+        try:
+            stat = os.stat(file_path)
+            fallback_source = self.settings.get("fallback_date_source", "修改日期")
+            if fallback_source == "修改日期":
+                return datetime.fromtimestamp(stat.st_mtime)
+            elif fallback_source == "创建日期":
+                return datetime.fromtimestamp(stat.st_ctime)
+        except Exception:
+            pass
+
+        return datetime.now()
+
 
 class FileTableWidget(QTableWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent = parent
-        self.setContextMenuPolicy(Qt.CustomContextMenu)  # ← PyQt5
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self.show_context_menu)
-        # 禁用双击编辑
-        self.setEditTriggers(QTableWidget.NoEditTriggers)  # ← PyQt5
+        self.setEditTriggers(QTableWidget.NoEditTriggers)
 
     def show_context_menu(self, pos):
         menu = QMenu(self)
-        
-        # 获取当前选中的行
         row = self.rowAt(pos.y())
         if row >= 0:
-            # 添加删除选项
             delete_action = QAction("从列表中移除", self)
             delete_action.triggered.connect(lambda: self.remove_file(row))
             menu.addAction(delete_action)
-            
             menu.addSeparator()
         
-        # 添加清空列表选项
         clear_action = QAction("清空列表", self)
         clear_action.triggered.connect(self.clear_all)
         menu.addAction(clear_action)
-        
-        menu.exec_(self.mapToGlobal(pos))  # ← PyQt5: exec_
+        menu.exec_(self.mapToGlobal(pos))
 
     def remove_file(self, row):
         if isinstance(self.parent, MainWindow):
-            self.parent.files.pop(row)
+            if 0 <= row < len(self.parent.files):
+                self.parent.files.pop(row)
             self.removeRow(row)
-            # 更新状态栏显示
             self.parent.update_list_button_text()
 
     def clear_all(self):
         if isinstance(self.parent, MainWindow):
             self.parent.clear_files()
 
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"{__app_name__} {__version__} —— {__author__}")
         
-        # 设置应用程序图标
-        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.ico")
+        icon_path = get_resource_path("icon.ico")
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
-            print(f"已加载图标: {icon_path}")
-        else:
-            print(f"警告: 图标文件不存在 - {icon_path}")
         
         self.setStyleSheet("""
             QMainWindow {
@@ -1100,7 +1026,7 @@ class MainWindow(QMainWindow):
                 background-color: white;
                 font-size: 13px;
                 gridline-color: #f5f5f5;
-                outline: none;  /* 去掉表格的焦点边框 */
+                outline: none;
             }
             QTableWidget::item {
                 padding: 8px;
@@ -1109,11 +1035,11 @@ class MainWindow(QMainWindow):
             QTableWidget::item:selected {
                 background-color: #e8f0fe;
                 color: #1a73e8;
-                outline: none;  /* 去掉选中时的虚线边框 */
+                outline: none;
             }
             QTableWidget::item:focus {
-                outline: none;  /* 去掉焦点时的虚线边框 */
-                border: none;   /* 去掉边框 */
+                outline: none;
+                border: none;
             }
             QHeaderView::section {
                 background-color: #f8f8f8;
@@ -1165,29 +1091,26 @@ class MainWindow(QMainWindow):
             }
         """)
         self.files = []
-        self.settings = self.load_settings()
+        self.settings = SettingsPanel.load_settings(self)
         self.has_renamed = False
+        self.current_success_count = 0
         self.init_ui()
         self.setup_animations()
 
     def setup_animations(self):
-        # 为开始按钮设置动画
         self.start_animation = QPropertyAnimation(self.action_btn, b"geometry")
         self.start_animation.setDuration(150)
-        self.start_animation.setEasingCurve(QEasingCurve.OutCubic)  # ← PyQt5
+        self.start_animation.setEasingCurve(QEasingCurve.OutCubic)
 
-        # 为设置按钮设置动画
         self.settings_animation = QPropertyAnimation(self.settings_btn, b"geometry")
         self.settings_animation.setDuration(150)
-        self.settings_animation.setEasingCurve(QEasingCurve.OutCubic)  # ← PyQt5
+        self.settings_animation.setEasingCurve(QEasingCurve.OutCubic)
 
-        # 为展开按钮设置动画
         self.toggle_animation = QPropertyAnimation(self.toggle_list_btn, b"geometry")
         self.toggle_animation.setDuration(150)
-        self.toggle_animation.setEasingCurve(QEasingCurve.OutCubic)  # ← PyQt5
+        self.toggle_animation.setEasingCurve(QEasingCurve.OutCubic)
 
     def enterEvent(self, event):
-        # 鼠标进入按钮区域时触发动画
         if self.action_btn.underMouse():
             self.animate_button(self.action_btn, self.start_animation, True)
         elif self.settings_btn.underMouse():
@@ -1196,7 +1119,6 @@ class MainWindow(QMainWindow):
             self.animate_button(self.toggle_list_btn, self.toggle_animation, True)
 
     def leaveEvent(self, event):
-        # 鼠标离开按钮区域时触发动画
         if self.action_btn.underMouse():
             self.animate_button(self.action_btn, self.start_animation, False)
         elif self.settings_btn.underMouse():
@@ -1205,20 +1127,13 @@ class MainWindow(QMainWindow):
             self.animate_button(self.toggle_list_btn, self.toggle_animation, False)
 
     def animate_button(self, button, animation, is_enter):
-        # 获取按钮当前位置
         current_geometry = button.geometry()
-        
-        # 设置动画起始和结束位置
         if is_enter:
-            # 鼠标进入时，按钮稍微上移
             animation.setStartValue(current_geometry)
             animation.setEndValue(current_geometry.adjusted(0, -2, 0, -2))
         else:
-            # 鼠标离开时，按钮回到原位
             animation.setStartValue(current_geometry)
             animation.setEndValue(current_geometry.adjusted(0, 2, 0, 2))
-        
-        # 启动动画
         animation.start()
 
     def init_ui(self):
@@ -1227,53 +1142,45 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         self.stacked_layout = QStackedLayout(central_widget)
 
-        # 主内容区
         self.main_panel = QWidget()
         layout = QVBoxLayout(self.main_panel)
         layout.setSpacing(15)
         layout.setContentsMargins(20, 20, 20, 20)
 
-        # 拖放区域
         self.drop_area = DropArea(self)
         self.drop_area.setMinimumHeight(200)
         layout.addWidget(self.drop_area)
 
-        # 文件列表容器
         list_container = QWidget()
         list_layout = QVBoxLayout(list_container)
         list_layout.setContentsMargins(0, 0, 0, 0)
         list_layout.setSpacing(0)
 
-        # 文件列表
         self.file_list = FileTableWidget(self)
         self.file_list.setColumnCount(2)
         self.file_list.setHorizontalHeaderLabels(["文件名", "状态"])
-        self.file_list.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)  # ← PyQt5
-        self.file_list.horizontalHeader().setSectionResizeMode(1, QHeaderView.Fixed)    # ← PyQt5
+        self.file_list.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.file_list.horizontalHeader().setSectionResizeMode(1, QHeaderView.Fixed)
         self.file_list.setColumnWidth(1, 60)
         self.file_list.setMinimumHeight(200)
         self.file_list.setVisible(False)
         self.file_list.setShowGrid(False)
-        self.file_list.setSelectionBehavior(QTableWidget.SelectRows)  # ← PyQt5
+        self.file_list.setSelectionBehavior(QTableWidget.SelectRows)
         self.file_list.verticalHeader().setVisible(False)
-        # 设置标题对齐方式
-        self.file_list.horizontalHeaderItem(0).setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)  # ← PyQt5
-        self.file_list.horizontalHeaderItem(1).setTextAlignment(Qt.AlignCenter)  # ← PyQt5
-        # 添加平滑滚动
-        self.file_list.setVerticalScrollMode(QTableWidget.ScrollPerPixel)  # ← PyQt5
-        self.file_list.setHorizontalScrollMode(QTableWidget.ScrollPerPixel)  # ← PyQt5
+        self.file_list.horizontalHeaderItem(0).setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.file_list.horizontalHeaderItem(1).setTextAlignment(Qt.AlignCenter)
+        self.file_list.setVerticalScrollMode(QTableWidget.ScrollPerPixel)
+        self.file_list.setHorizontalScrollMode(QTableWidget.ScrollPerPixel)
         list_layout.addWidget(self.file_list)
         
         list_container.hide()
         layout.addWidget(list_container)
         self.list_container = list_container
 
-        # 按钮区域
         button_layout = QHBoxLayout()
         button_layout.setSpacing(12)
-        button_layout.setContentsMargins(0, 10, 0, 0)  # 添加上边距
+        button_layout.setContentsMargins(0, 10, 0, 0)
 
-        # 添加展开/隐藏按钮
         self.toggle_list_btn = AnimatedButton("▼")
         self.toggle_list_btn.setStyleSheet("""
             QPushButton {
@@ -1359,13 +1266,11 @@ class MainWindow(QMainWindow):
         layout.addLayout(button_layout)
         self.stacked_layout.addWidget(self.main_panel)
 
-        # 设置面板
         self.settings_panel = SettingsPanel(self)
         self.settings_panel.back_btn.clicked.connect(self.show_main_panel)
         self.stacked_layout.addWidget(self.settings_panel)
         self.stacked_layout.setCurrentWidget(self.main_panel)
 
-        # 状态栏
         self.statusBar = self.statusBar()
         self.status_label = QLabel("")
         self.statusBar.addWidget(self.status_label)
@@ -1380,108 +1285,76 @@ class MainWindow(QMainWindow):
         if not self.list_container.isVisible():
             self.list_container.show()
             self.file_list.setVisible(True)
-            self.toggle_list_btn.setText("▲")  # 展开时显示向上三角形
+            self.toggle_list_btn.setText("▲")
             self.update_list_button_text()
-            # 自动滚动到最后一行
             if self.file_list.rowCount() > 0:
                 self.file_list.scrollToBottom()
 
     def hide_file_list(self):
         self.list_container.hide()
         self.file_list.setVisible(False)
-        self.toggle_list_btn.setText("▼")  # 隐藏时显示向下三角形
+        self.toggle_list_btn.setText("▼")
         self.update_list_button_text()
 
     def show_message(self, message, duration=3000):
-        """显示状态栏消息"""
-        # 如果当前正在显示进度消息，不要覆盖它
         if duration == 0 and "正在重命名" in self.status_label.text():
             return
         self.status_label.setText(message)
-        # 如果设置了持续时间，则定时恢复显示文件信息
         if duration > 0:
             QTimer.singleShot(duration, self.update_list_button_text)
 
     def update_list_button_text(self):
         if not self.files:
-            self.status_label.setText("")  # 空列表时状态栏不显示任何内容
+            self.status_label.setText("")
             return
 
-        # 获取最新的文件信息
         latest_file = self.files[-1]
         file_name = os.path.basename(latest_file)
         if len(self.files) == 1:
             self.status_label.setText(file_name)
         else:
             self.status_label.setText(f"共{len(self.files)}个文件")
-            # 确保状态栏文本不会太长
             if len(self.status_label.text()) > 50:
                 self.status_label.setText(f"共{len(self.files)}个文件 - {file_name[:30]}...")
 
     def add_files(self, files):
-        # 如果已经进行过重命名操作，则清空列表
         if self.has_renamed:
             self.clear_files()
             self.has_renamed = False
 
-        # 添加新文件
-        for file_path in files:
-            if file_path not in self.files:  # 避免重复添加
-                self.files.append(file_path)
-                row = self.file_list.rowCount()
-                self.file_list.insertRow(row)
-                self.file_list.setItem(row, 0, QTableWidgetItem(os.path.basename(file_path)))
-                self.file_list.setItem(row, 1, QTableWidgetItem("●"))
-                self.file_list.item(row, 1).setTextAlignment(Qt.AlignCenter)  # ← PyQt5
+        existing_files = set(self.files)
+        files_to_add = [f for f in files if f not in existing_files]
+        if not files_to_add:
+            return
 
-        # 如果列表可见，则自动滚动到底部
+        self.file_list.setUpdatesEnabled(False)
+        current_rows = self.file_list.rowCount()
+        self.file_list.setRowCount(current_rows + len(files_to_add))
+        
+        for idx, file_path in enumerate(files_to_add):
+            row = current_rows + idx
+            self.files.append(file_path)
+            
+            name_item = QTableWidgetItem(os.path.basename(file_path))
+            status_item = QTableWidgetItem("●")
+            status_item.setTextAlignment(Qt.AlignCenter)
+            
+            self.file_list.setItem(row, 0, name_item)
+            self.file_list.setItem(row, 1, status_item)
+
+        self.file_list.setUpdatesEnabled(True)
         if self.file_list.isVisible():
             self.file_list.scrollToBottom()
-        # 更新状态栏显示
         self.update_list_button_text()
 
     def show_settings(self):
-        # 创建动画
-        self.animation = QPropertyAnimation(self.stacked_layout.currentWidget(), b"geometry")
-        self.animation.setDuration(250)
-        self.animation.setEasingCurve(QEasingCurve.OutCubic)  # ← PyQt5
-        
-        # 设置动画起始和结束位置
-        start_geometry = self.stacked_layout.currentWidget().geometry()
-        self.animation.setStartValue(start_geometry)
-        
-        # 切换到设置面板
         self.stacked_layout.setCurrentWidget(self.settings_panel)
-        
-        # 设置动画结束位置
-        end_geometry = self.settings_panel.geometry()
-        self.animation.setEndValue(end_geometry)
-        
-        # 启动动画
-        self.animation.start()
 
     def show_main_panel(self):
-        # 创建动画
-        self.animation = QPropertyAnimation(self.stacked_layout.currentWidget(), b"geometry")
-        self.animation.setDuration(250)
-        self.animation.setEasingCurve(QEasingCurve.OutCubic)  # ← PyQt5
-        
-        # 设置动画起始和结束位置
-        start_geometry = self.stacked_layout.currentWidget().geometry()
-        self.animation.setStartValue(start_geometry)
-        
-        # 切换到主面板
         self.stacked_layout.setCurrentWidget(self.main_panel)
-        
-        # 设置动画结束位置
-        end_geometry = self.main_panel.geometry()
-        self.animation.setEndValue(end_geometry)
-        
-        # 启动动画
-        self.animation.start()
 
     def toggle_action(self):
-        if self.action_btn.text() == "开始":
+        if self.action_btn.text().startswith("开始"):
             if not self.files:
                 self.show_message("请先添加文件", 2000)
                 return
@@ -1509,85 +1382,49 @@ class MainWindow(QMainWindow):
             """)
         else:
             self.stop_rename()
-            self.action_btn.setText("开始")
-            self.action_btn.setObjectName("actionButton")
-            self.action_btn.setStyleSheet("""
-                QPushButton {
-                    background: #2196F3;
-                    color: white;
-                    border: none;
-                    padding: 8px 16px;
-                    border-radius: 6px;
-                    font-size: 14px;
-                    min-width: 80px;
-                    min-height: 36px;
-                    font-weight: bold;
-                }
-                QPushButton:hover {
-                    background: #1976D2;
-                }
-                QPushButton:pressed {
-                    background: #1565C0;
-                }
-                QPushButton:disabled {
-                    background: #BDBDBD;
-                    color: #E0E0E0;
-                }
-            """)
 
     def start_rename(self):
         if not self.files:
             return
-        # 确保文件列表可见
         if not self.list_container.isVisible():
             self.show_file_list()
+        
+        self.current_success_count = 0
         self.worker = RenameWorker(self.files, self.settings)
         self.worker.progress.connect(self.update_progress)
         self.worker.finished.connect(self.rename_finished)
         self.worker.start()
-        # 添加状态栏提示
-        self.show_message("正在重命名文件...", 0)  # 持续显示直到完成
+        self.show_message("正在重命名文件...", 0)
 
     def stop_rename(self):
-        if hasattr(self, 'worker'):
-            self.worker.terminate()
+        if hasattr(self, 'worker') and self.worker.isRunning():
+            self.action_btn.setEnabled(False)
+            self.worker.stop()
             self.worker.wait()
-        self.rename_finished(0)  # 传入0表示没有成功重命名的文件
+            self.action_btn.setEnabled(True)
 
-    def update_progress(self, old_name, new_name):
-        if "错误" not in new_name and "跳过" not in new_name and "已符合命名格式" not in new_name:
-            # 更新文件列表中的路径
-            for i in range(self.file_list.rowCount()):
-                if self.file_list.item(i, 0).text() == os.path.basename(old_name):
-                    self.file_list.item(i, 0).setText(os.path.basename(new_name))
-                    self.file_list.item(i, 1).setText("✓")
-                    self.file_list.item(i, 1).setForeground(QColor("#4CAF50"))
-                    # 滚动到当前项
-                    self.file_list.scrollToItem(self.file_list.item(i, 0))
-                    break
-            # 状态栏显示进度
-            success_count = sum(1 for i in range(self.file_list.rowCount()) 
-                              if self.file_list.item(i, 1).text() == "✓")
-            total_count = self.file_list.rowCount()
-            self.show_message(f"正在重命名... ({success_count}/{total_count})", 0)
-            # 更新按钮文本显示进度
-            self.action_btn.setText(f"停止 ({success_count}/{total_count})")
-        else:
-            # 如果是错误、跳过或已符合格式，更新列表状态
-            for i in range(self.file_list.rowCount()):
-                if self.file_list.item(i, 0).text() == os.path.basename(old_name):
-                    if "错误" in new_name:
-                        self.file_list.item(i, 1).setText("✗")
-                        self.file_list.item(i, 1).setForeground(QColor("#F44336"))
-                    elif "已符合命名格式" in new_name:
-                        self.file_list.item(i, 1).setText("✓")
-                        self.file_list.item(i, 1).setForeground(QColor("#4CAF50"))
-                    else:
-                        self.file_list.item(i, 1).setText("○")
-                        self.file_list.item(i, 1).setForeground(QColor("#9E9E9E"))
-                    # 滚动到当前项
-                    self.file_list.scrollToItem(self.file_list.item(i, 0))
-                    break
+    def update_progress(self, index, old_path, new_path, status_text, is_success):
+        if 0 <= index < self.file_list.rowCount():
+            if is_success:
+                self.files[index] = new_path
+                self.file_list.item(index, 0).setText(os.path.basename(new_path))
+                self.file_list.item(index, 1).setText("✓")
+                self.file_list.item(index, 1).setForeground(QColor("#4CAF50"))
+                self.current_success_count += 1
+                
+                total = len(self.files)
+                self.show_message(f"正在重命名... ({self.current_success_count}/{total})", 0)
+                self.action_btn.setText(f"停止 ({self.current_success_count}/{total})")
+            else:
+                if "错误" in status_text:
+                    self.file_list.item(index, 1).setText("✗")
+                    self.file_list.item(index, 1).setForeground(QColor("#F44336"))
+                elif "已符合命名格式" in status_text:
+                    self.file_list.item(index, 1).setText("✓")
+                    self.file_list.item(index, 1).setForeground(QColor("#4CAF50"))
+                else:
+                    self.file_list.item(index, 1).setText("○")
+                    self.file_list.item(index, 1).setForeground(QColor("#9E9E9E"))
 
     def rename_finished(self, success_count):
         self.action_btn.setText("开始")
@@ -1615,52 +1452,14 @@ class MainWindow(QMainWindow):
                 color: #E0E0E0;
             }
         """)
-        # 只有在实际进行了重命名操作时才显示完成信息
         if success_count > 0:
-            # 先清除进度消息
             self.status_label.setText("")
-            # 然后显示完成消息
             QTimer.singleShot(100, lambda: self.show_message(f"✓ 已重命名 {success_count} 个文件", 3000))
-            # 在拖动区域显示成功提示
             self.drop_area.show_success(success_count)
-            self.has_renamed = True  # 标记已进行重命名操作
+            self.has_renamed = True
         else:
             self.show_message("没有文件被重命名", 3000)
             self.update_list_button_text()
-
-    def load_settings(self):
-        default_settings = {
-            "date_source": "拍摄日期",
-            "fallback_date_source": "修改日期",
-            "duplicate_handling": "add_suffix",
-            "name_template": "{YYYY}{MM}{DD}_{HH}{mm}{SS}",
-            "custom_format": "{YYYY}{MM}{DD}_{HH}{mm}{SS}",
-            "enable_non_media": True,
-            "non_media_date_source": "创建日期"
-        }
-        
-        try:
-            # 检查配置文件是否存在
-            if not os.path.exists("settings.json"):
-                # 如果不存在，创建默认配置文件
-                with open("settings.json", "w", encoding="utf-8") as f:
-                    json.dump(default_settings, f, ensure_ascii=False, indent=4)
-                return default_settings
-            
-            # 读取现有配置
-            with open("settings.json", "r", encoding="utf-8") as f:
-                settings = json.load(f)
-            
-            # 检查必要的键是否存在，如果不存在则使用默认值
-            for key, value in default_settings.items():
-                if key not in settings:
-                    settings[key] = value
-            
-            return settings
-        except Exception as e:
-            print(f"加载设置错误: {str(e)}")
-            # 发生任何错误，返回默认设置
-            return default_settings
 
     def clear_files(self):
         self.files.clear()
@@ -1670,23 +1469,18 @@ class MainWindow(QMainWindow):
         self.list_container.hide()
         self.has_renamed = False
 
+
 if __name__ == '__main__':
-    # 删除手动DPI设置，让Qt自行处理DPI
     app = QApplication(sys.argv)
     
-    # 设置应用程序图标（在任务栏和任务管理器中显示）
-    icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.ico")
+    icon_path = get_resource_path("icon.ico")
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
-        print(f"已加载图标: {icon_path}")
-    else:
-        print(f"警告: 图标文件不存在 - {icon_path}")
     
-    # 设置应用程序样式
     app.setStyle("Fusion")
-    # 设置默认字体
     font = QFont("Microsoft YaHei", 9)
     app.setFont(font)
+    
     window = MainWindow()
     window.show()
     sys.exit(app.exec_())
